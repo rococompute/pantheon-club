@@ -423,6 +423,25 @@ def make_handler(source, net=None, legacy=False):
                         cache["at"] = time.time()
                     body = cache["body"]
                 self.send(200, body, "application/json")
+            elif path == "/plan.md":
+                if net:
+                    root = Path(net).resolve()
+                    for candidate in [root / ".cmux/plan.md", root / "plan.md"]:
+                        if candidate.is_file() and not candidate.is_symlink() and root in candidate.resolve().parents:
+                            return self.send(200, candidate.read_bytes(), "text/markdown; charset=utf-8")
+                    self.send(404, b"The market has not written plan.md yet.\n", "text/plain; charset=utf-8")
+                else:
+                    self.send(200, ("## Demo market\n\nThis is a sample plan for the local game demo.\n\n"
+                                   "## Plan: calculator\n\n"
+                                   "✅ Define calculator commands and their inputs.\n\n"
+                                   "✅ Add subtraction with boundary cases.\n\n"
+                                   "⏳ Implement multiplication and division.\n\n"
+                                   "🟡 Check malformed inputs and division by zero.\n\n"
+                                   "## Checks\n\nRun the example's checks before accepting a bid. "
+                                   "Review the implementation, test evidence and remaining work.\n\n"
+                                   "## Next steps\n\nDocument the commands and their expected output. "
+                                   "Keep changes small enough for the other agents to review.\n").encode(),
+                              "text/markdown; charset=utf-8")
             elif legacy and (path.startswith(("/assets/", "/vendor/")) or path in ("/club.js", "/club.css")):
                 root = Path(HERE, "club").resolve()
                 target = (root / path.lstrip("/")).resolve()

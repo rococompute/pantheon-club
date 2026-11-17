@@ -84,10 +84,24 @@ try {
   await sleep(1500);
   const after = await evaluate('[club.scene.localPlayer.x,club.scene.localPlayer.y]');
   assert(Math.hypot(after[0] - before[0], after[1] - before[1]) > 30, 'floor click moves the player');
-  const agentPoint = await evaluate("(()=>{const p=[...club.penguins.values()][0];p.entity.moveTween?.stop();p.entity.isMoving=false;return [p.entity.x,p.entity.y-20]})()");
-  await worldClick(...agentPoint);
-  await until('!!club.selected', 'agent click opens work card');
-  await evaluate("document.querySelector('[data-close]').click()");
+  await until('!!club.poster.button', 'native paper poster inside the canvas');
+  assert.equal(await evaluate("!!document.querySelector('#pantheon-club-panel')"), false, 'no page overlay or Agents chip');
+  assert(await evaluate('[...club.penguins.values()].every(p=>!p.entity.input)'), 'agents no longer have click cards');
+  await worldClick(724, 43);
+  await until('club.poster.isOpen && club.poster.raw!==null', 'poster opens the market plan');
+  assert.equal(await evaluate('club.poster.raw'), await (await fetch(new URL('/plan.md', url))).text(), 'the paper contains the actual plan.md');
+  assert(await evaluate('club.poster.pages.length > 1'), 'long plans paginate');
+  await worldClick(513, 416);
+  await until('club.poster.page===1', 'next magazine page');
+  await worldClick(247, 416);
+  await until('club.poster.page===0', 'previous magazine page');
+  await worldClick(380, 200);
+  assert.deepEqual(await evaluate('[club.scene.localPlayer.x,club.scene.localPlayer.y]'), after, 'reading the paper does not walk the penguin');
+  const posterScreenshot = await call('Page.captureScreenshot', { format: 'png' });
+  await writeFile(join(tmpdir(), 'pantheon-plan-poster.png'), Buffer.from(posterScreenshot.data, 'base64'));
+  await call('Input.dispatchKeyEvent', {type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+  await call('Input.dispatchKeyEvent', {type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+  await until('!club.poster.isOpen', 'close plan with Escape');
   await worldClick(45, 444); // original map button
   await until('club.scene.mapOpen && club.scene.islandMap._built', 'native map');
   const zones = await evaluate("club.scene.islandMap.container.list.filter(o=>o.type==='Zone').map(o=>[o.x,o.y])");

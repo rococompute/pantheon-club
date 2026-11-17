@@ -156,6 +156,17 @@ class ClubTests(unittest.TestCase):
             self.assertIn(b'404 Not Found',request(path))
         self.assertNotIn(b'NEVER SERVE',request('/state.json'))
         self.assertIn(b'403 Forbidden',request('/focus?agent=codex','POST','Origin: https://example.com\r\n'))
+        self.assertIn(b'404 Not Found', request('/plan.md'))
+        plan = self.net/'.cmux/plan.md'
+        plan.write_text('## Actual live plan\n\n✅ First task\n\n<details><summary>Review</summary>Evidence</details>\n')
+        self.assertTrue(request('/plan.md').endswith(plan.read_bytes()))
+        self.assertIn(b'text/markdown; charset=utf-8', request('/plan.md'))
+        plan.write_text('## Updated live plan\n')
+        self.assertTrue(request('/plan.md?file=claude/key.json').endswith(plan.read_bytes()))
+        self.assertNotIn(b'NEVER SERVE', request('/plan.md?file=claude/key.json'))
+        plan.unlink()
+        (self.net/'plan.md').write_text('## Archived market plan\n')
+        self.assertTrue(request('/plan.md').endswith(b'## Archived market plan\n'))
 
 if __name__ == '__main__':
     unittest.main()

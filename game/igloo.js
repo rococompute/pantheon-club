@@ -2,18 +2,15 @@
 // Player controls, room loading, HUD, map, wardrobe and games stay upstream.
 import Penguin from '/src/entities/Penguin.js';
 import PuffleView from '/src/entities/PuffleView.js';
-import Phaser from 'phaser';
 import { MovieRoom } from '/src/movie/movie.js';
 import { installMovement } from 'virtual:pantheon-movement';
+import { PlanPoster } from 'virtual:pantheon-plan';
 
 const appearances = [
   [6, 'orange'], [12, 'blue'], [8, 'purple'], [2, 'green'], [3, 'pink'],
   [5, 'red'], [7, 'yellow'], [9, 'brown'], [4, 'black'], [16, 'white'],
 ];
 const isPenguin = a => a.avatar ? a.avatar === 'penguin' : !a.parent && !a.cloud;
-const words = { working: 'Working', idle: 'Between requests', needs_input: 'Waiting on you',
-  waiting: 'Waiting on you', blocked: 'Waiting on you', limited: 'Usage limit',
-  completed: 'Completed', ended: 'Ended', none: 'Session state unavailable' };
 
 class IglooClub {
   constructor(scene) {
@@ -23,37 +20,12 @@ class IglooClub {
     this.state = null;
     this.disposed = false;
     this.abort = new AbortController();
-    this.makePanel();
+    this.poster = new PlanPoster(scene);
     this.tick = this.tick.bind(this);
     scene.events.on('update', this.tick);
     scene.events.once('shutdown', () => this.destroy());
     this.poll();
     this.timer = setInterval(() => this.poll(), 2000);
-  }
-
-  makePanel() {
-    this.panel = document.createElement('section');
-    this.panel.id = 'pantheon-club-panel';
-    this.panel.innerHTML = `<style>
-      #pantheon-club-panel{position:fixed;top:8px;left:8px;z-index:10000;font:12px system-ui;color:#172b36}
-      #pantheon-club-panel button{font:inherit;cursor:pointer;border:1px solid #587584;border-radius:12px;padding:5px 9px;background:#f7fcffe8;color:#172b36}
-      #pantheon-club-panel aside{margin-top:6px;padding:12px;background:#f7fcfff5;border:1px solid #587584;border-radius:10px;max-width:270px;max-height:60vh;overflow:auto;box-shadow:0 3px 14px #0003}
-      #pantheon-club-panel p{margin:7px 0;white-space:pre-wrap;overflow-wrap:anywhere}
-      #pantheon-club-panel h3{margin:0 0 6px} #pantheon-club-panel .club-roster{display:flex;gap:4px;flex-wrap:wrap}
-    </style><button type="button" data-open>Agents</button>
-    <aside hidden><button type="button" data-close style="float:right" aria-label="Close agent card">×</button>
-    <h3>Pantheon</h3><p data-summary>Connecting to the local market…</p><div class="club-roster"></div>
-    <h3 data-name></h3><p data-status></p><p data-task></p><button type="button" data-focus hidden>Open agent tab</button></aside>`;
-    document.body.append(this.panel);
-    const aside = this.panel.querySelector('aside');
-    this.panel.querySelector('[data-open]').onclick = () => { aside.hidden = !aside.hidden; };
-    this.panel.querySelector('[data-close]').onclick = () => { aside.hidden = true; };
-    this.panel.querySelector('[data-focus]').onclick = async () => {
-      const agent = this.state?.agents.find(a => a.name === this.selected);
-      if (!agent) return;
-      const result = await fetch('/focus?agent=' + encodeURIComponent(agent.parent || agent.name), { method: 'POST' });
-      if (!result.ok) this.panel.querySelector('[data-status]').textContent = 'No live cmux tab for this agent.';
-    };
   }
 
   async poll() {
@@ -66,45 +38,18 @@ class IglooClub {
       if (!Array.isArray(state.agents)) throw new Error(state.error || 'Invalid local market state');
       this.apply(state);
     } catch (error) {
-      if (!this.disposed) this.panel.querySelector('[data-summary]').textContent = 'Local market unavailable. The game still works.';
+      // Keep the last agent projection while the market is unavailable.
     } finally { this.fetching = false; }
   }
 
   apply(state) {
     this.state = state;
-    this.panel.querySelector('[data-open]').textContent = `Agents · ${state.agents.length}`;
-    this.panel.querySelector('[data-summary]').textContent = `${state.network === 'demo' ? 'Demo market' : state.title || 'Pantheon'} · agents live in your igloo`;
-    const roster = this.panel.querySelector('.club-roster');
-    roster.replaceChildren();
-    for (const agent of state.agents) {
-      const button = document.createElement('button');
-      button.textContent = agent.name;
-      button.onclick = () => this.select(agent.name);
-      roster.append(button);
-    }
-    if (this.selected) this.select(this.selected, false);
     this.reconcile();
-  }
-
-  select(name, open = true) {
-    const a = this.state?.agents.find(x => x.name === name);
-    if (!a) return;
-    this.selected = name;
-    if (open) this.panel.querySelector('aside').hidden = false;
-    this.panel.querySelector('[data-name]').textContent = (a.leader ? '★ ' : '') + a.name;
-    this.panel.querySelector('[data-status]').textContent = `${isPenguin(a) ? 'Diplomat penguin' : 'Cloud worker puffle'} · ${words[a.state] || a.state}${a.parent ? ' · follows ' + a.parent : ''}`;
-    this.panel.querySelector('[data-task]').textContent = a.task || a.pending?.map(b => b.title).join('\n') || `${a.merges || 0} merged bids`;
-    this.panel.querySelector('[data-focus]').hidden = !this.state.live || this.state.network === 'demo';
   }
 
   inOwnIgloo() {
     return this.scene.currentRoom === 'igloo' && this.scene._playerReady &&
       (!this.scene._iglooVisit || this.scene._iglooVisit === this.scene.network?.playerId);
-  }
-
-  interactive(container, name) {
-    container.setInteractive(new Phaser.Geom.Rectangle(-23, -60, 46, 83), Phaser.Geom.Rectangle.Contains);
-    container.on('pointerdown', (_p, _x, _y, event) => { event.stopPropagation(); this.select(name); });
   }
 
   clearActors() {
@@ -135,7 +80,6 @@ class IglooClub {
       if (!p) {
         const home = { x: 215 + (i % 5) * 80, y: 280 + Math.floor(i / 5) * 65 };
         const entity = new Penguin(this.scene, home.x, home.y, 'pantheon:' + agent.name, agent.name, color, false);
-        this.interactive(entity, agent.name);
         p = { entity, home, species, nextMove: 0 };
         this.penguins.set(agent.name, p);
       }
@@ -163,7 +107,6 @@ class IglooClub {
         return Reflect.get(target, key, target);
       } });
       const view = new PuffleView(this.scene, { petRowId: 'pantheon:' + agent.name, name: agent.name, species: 'puffle_' + owner.species }, follow);
-      this.interactive(view.container, agent.name);
       this.puffles.set(agent.name, { view, parent });
     }
   }
@@ -182,12 +125,16 @@ class IglooClub {
   destroy() {
     this.disposed = true; this.abort.abort(); clearInterval(this.timer);
     this.scene.events.off('update', this.tick);
-    this.clearActors(); this.panel.remove();
+    this.clearActors(); this.poster.destroy();
   }
 }
 
 export function installClub(RoomScene) {
   installMovement(MovieRoom);
+  const handleAction = RoomScene.prototype.handleAction;
+  RoomScene.prototype.handleAction = function (...args) {
+    if (!this._clubPlanOpen) return handleAction.apply(this, args);
+  };
   const create = RoomScene.prototype.create;
   RoomScene.prototype.create = function (...args) {
     const result = create.apply(this, args);

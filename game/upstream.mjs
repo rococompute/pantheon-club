@@ -6,7 +6,7 @@ function replaceOnce(code, before, after) {
 export function transformRoomScene(source) {
   let code = source.replace(/\r\n/g, '\n');
   code = replaceOnce(code, 'const wy = pointer.worldY;',
-    'if (!this._movieReady || !this.movie?._clubCollisionReady) return;\n            const wy = pointer.worldY;');
+    'if (this._clubPlanOpen || !this._movieReady || !this.movie?._clubCollisionReady) return;\n            const wy = pointer.worldY;');
   code = replaceOnce(code, 'let dest = { x: targetX, y: targetY };',
     'if (!recoverPlayer(this)) return;\n            let dest = { x: targetX, y: targetY };');
   code = replaceOnce(code, 'this._interactions.build();',

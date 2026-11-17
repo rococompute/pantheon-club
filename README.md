@@ -2,7 +2,7 @@
 
 A local, personal, non-commercial fan extension of [Pantheon’s cmux integration](https://github.com/rococompute/pantheon/tree/master/integrations/cmux), using the **actual [Claude Penguin game](https://github.com/gabixou/claude-penguin)** rather than a recreated scene.
 
-You play your own penguin with the original game’s controls, map, rooms, wardrobe and available minigames. Pantheon penguins and their cloud-worker puffles appear **only in your own igloo**. They use the game’s native entities, colors, animations and follower logic. Leaving the igloo removes them; returning restores them. The Agents panel shows work status and can focus an agent’s cmux tab. The extra My igloo and floating Edit Igloo buttons are omitted.
+You play your own penguin with the original game’s controls, map, rooms, wardrobe and available minigames. Pantheon penguins and their cloud-worker puffles appear **only in your own igloo**. They use the game’s native entities, colors, animations and follower logic. Leaving the igloo removes them; returning restores them. A paper poster in the top right **inside the game canvas** opens the market’s actual `plan.md`, with catalogue-style page flips. There is no page overlay, Agents chip, or agent-click card. The extra My igloo and floating Edit Igloo buttons are omitted.
 
 ## Run locally
 
@@ -22,7 +22,7 @@ The original `pantheon-club view RECORD|demo` and `pantheon-club serve NET` entr
 
 Everything is hosted on **127.0.0.1**: the Vite client, WebSocket game server and Pantheon state bridge. This does not connect to the project’s public game server, use public hosting, or expose a LAN listener. The WebSocket server rejects foreign browser origins. Your player and igloo persist in `.local-game/penguin.db`; no external account is required. Game assets are served locally after setup. Installation requires Internet access.
 
-The browser polls sanitized Pantheon status every two seconds. An unavailable market does not stop the game. The bridge does not serve node keys or source checkouts. The game server has no access to Pantheon’s agent controls; focusing a tab goes through the separate local bridge.
+The browser polls sanitized Pantheon status every two seconds. An unavailable market does not stop the game. The plan poster reads `NET/.cmux/plan.md` (or `plan.md` in an archived run) through a fixed local endpoint and refreshes while open. Its paper is the original Ski Lodge catalogue art, used both for the small poster and the centered reader. Next/previous corners and Left/Right or Page Up/Down flip pages; Escape or the close button returns to the game. All rendering stays inside Phaser, with its default canvas sizing and surrounding UI. The bridge does not serve node keys or source checkouts. Markdown is drawn as text on the paper, without executing HTML or loading remote content.
 
 Walking uses the original click-to-move controls. The pinned upstream client has no arrow-key walking handler; W, D and S are action shortcuts. The local adapter waits for collision and door triggers before allowing walking, validates rounded wall-edge destinations, and recovers a player already caught inside a building on the next floor click.
 
@@ -42,7 +42,7 @@ The left half contains **Club View → plan.md → watchdog**. The right half ke
 
 ## Agent appearances
 
-Every primary participant is a native penguin, including scripted nodes. A star marks the leader. Working agents move a little; agents needing input wave; idle or limited agents sit. The panel distinguishes these states. Missing session hooks are reported as unavailable.
+Every primary participant is a native penguin, including scripted nodes. A star marks the leader. Working agents move a little; agents needing input wave; idle or limited agents sit. Penguins and puffles are visual projections without agent-click cards.
 
 Cloud workers follow their parent as native puffles of the matching color family. Siblings have separate follow positions. Child network nodes also become puffles when they have an identified parent; `NET/NODE/parent` overrides the inferred relationship. Completed workers remain until removed. Agents are visual projections, not additional multiplayer accounts.
 
@@ -79,9 +79,9 @@ node --test test/movement-check.mjs
 node test/game-check.mjs
 ```
 
-The browser check exercises native sprite loading, multiple same-color puffles, player movement through floor clicks, map travel, clearing and restoring actors, and exclusion from another player’s igloo. It also checks Town/Gift Shop wall-edge clicks, clicks before collision is ready, recovery from the reproduced stuck position, and normal door entry. It checks browser exceptions and game network destinations. `CHROME` overrides the Chrome binary; `CLUB_SCREENSHOT` selects the screenshot path.
+The browser check verifies the in-canvas poster, exact plan content, next/previous pages and modal input isolation, then exercises native sprite loading, multiple same-color puffles, player movement through floor clicks, map travel, clearing and restoring actors, and exclusion from another player’s igloo. It also checks Town/Gift Shop wall-edge clicks, clicks before collision is ready, recovery from the reproduced stuck position, and normal door entry. It checks browser exceptions and game network destinations. `CHROME` overrides the Chrome binary; `CLUB_SCREENSHOT` selects the screenshot path.
 
-The earlier standalone Coffee Shop prototype remains under `club/` and is available only through the explicit `pantheon-club legacy-view demo` command for comparison. Its export tool and `room-check.mjs`/`client-check.mjs` checks apply only to that prototype. The calculator helper in `scripts/dogfood-calculator` still prepares and launches a separate sample Pantheon market; attaching now uses the full game. Game installation is checked before `up` starts a market. The normal Python state API serves only status and tab-focus requests, not the prototype.
+The earlier standalone Coffee Shop prototype remains under `club/` and is available only through the explicit `pantheon-club legacy-view demo` command for comparison. Its export tool and `room-check.mjs`/`client-check.mjs` checks apply only to that prototype. The calculator helper in `scripts/dogfood-calculator` still prepares and launches a separate sample Pantheon market; attaching now uses the full game. Game installation is checked before `up` starts a market. The normal Python API serves status, the fixed market plan and the existing tab-focus endpoint, not the prototype.
 
 ## Fan-use scope and credits
 

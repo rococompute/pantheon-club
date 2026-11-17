@@ -69,6 +69,7 @@ try {
       fs: { strict: true, allow: [join(upstream, 'client')] },
       proxy: {
         '/state.json': { target: api },
+        '/plan.md': { target: api },
         '/focus': { target: api, headers: { Origin: api } },
       },
     },
@@ -77,9 +78,10 @@ try {
       resolveId(id) {
         if (id === 'virtual:pantheon-club') return '\0pantheon-club';
         if (id === 'virtual:pantheon-movement') return '\0pantheon-movement';
+        if (id === 'virtual:pantheon-plan') return '\0pantheon-plan';
       },
       load(id) {
-        const file = id === '\0pantheon-club' ? 'igloo.js' : id === '\0pantheon-movement' ? 'movement.mjs' : null;
+        const file = id === '\0pantheon-club' ? 'igloo.js' : id === '\0pantheon-movement' ? 'movement.mjs' : id === '\0pantheon-plan' ? 'plan.js' : null;
         if (file) {
           this.addWatchFile(join(here, 'game', file));
           return readFile(join(here, 'game', file), 'utf8');
