@@ -79,9 +79,10 @@ try {
         if (id === 'virtual:pantheon-club') return '\0pantheon-club';
         if (id === 'virtual:pantheon-movement') return '\0pantheon-movement';
         if (id === 'virtual:pantheon-plan') return '\0pantheon-plan';
+        if (id === 'virtual:pantheon-plan-sections') return '\0pantheon-plan-sections';
       },
       load(id) {
-        const file = id === '\0pantheon-club' ? 'igloo.js' : id === '\0pantheon-movement' ? 'movement.mjs' : id === '\0pantheon-plan' ? 'plan.js' : null;
+        const file = id === '\0pantheon-club' ? 'igloo.js' : id === '\0pantheon-movement' ? 'movement.mjs' : id === '\0pantheon-plan' ? 'plan.js' : id === '\0pantheon-plan-sections' ? 'plan-sections.mjs' : null;
         if (file) {
           this.addWatchFile(join(here, 'game', file));
           return readFile(join(here, 'game', file), 'utf8');

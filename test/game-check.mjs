@@ -90,6 +90,24 @@ try {
   await worldClick(724, 43);
   await until('club.poster.isOpen && club.poster.raw!==null', 'poster opens the market plan');
   assert.equal(await evaluate('club.poster.raw'), await (await fetch(new URL('/plan.md', url))).text(), 'the paper contains the actual plan.md');
+  assert(await evaluate('club.poster.document.disclosures.length>0'), 'plan details have disclosure headers');
+  const closedHeight = await evaluate('club.poster.document.height');
+  await evaluate('window.planFold=club.poster.document.disclosures[0].key;void 0');
+  const clickFold = async () => {
+    const point = await evaluate('(()=>{const d=club.poster.document.disclosures.find(d=>d.key===window.planFold);club.poster.scrollTo(d.y);return {x:380,y:114+d.y-club.poster.offset+10}})()');
+    await worldClick(point.x, point.y);
+  };
+  await clickFold();
+  await until('club.poster.expanded.get(window.planFold)===true', 'expand a task/bid disclosure');
+  assert(await evaluate(`club.poster.document.height>${closedHeight}`), 'expanded evidence appears in the document');
+  await evaluate('club.poster.close()');
+  await worldClick(724, 43);
+  await until('club.poster.isOpen', 'reopen the paper');
+  assert.equal(await evaluate('club.poster.expanded.get(window.planFold)'), true, 'disclosure choices survive closing and reopening');
+  await clickFold();
+  await until('club.poster.expanded.get(window.planFold)===false', 'collapse the disclosure');
+  assert.equal(await evaluate('club.poster.document.height'), closedHeight, 'collapsed evidence no longer occupies space');
+  await evaluate('club.poster.scrollTo(0)');
   assert(await evaluate('club.poster.maxOffset > 0'), 'long plans scroll');
   const scrollPoint = await evaluate("(()=>{const r=document.querySelector('canvas').getBoundingClientRect();return {x:r.left+380/760*r.width,y:r.top+250/480*r.height}})()");
   await call('Input.dispatchMouseEvent', {type:'mouseMoved', ...scrollPoint});

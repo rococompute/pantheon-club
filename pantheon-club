@@ -440,7 +440,15 @@ def make_handler(source, net=None, legacy=False):
                                    "## Checks\n\nRun the example's checks before accepting a bid. "
                                    "Review the implementation, test evidence and remaining work.\n\n"
                                    "## Next steps\n\nDocument the commands and their expected output. "
-                                   "Keep changes small enough for the other agents to review.\n").encode(),
+                                   "Keep changes small enough for the other agents to review.\n\n"
+                                   "## Bids\n\n<details>\n<summary>🟢 Subtraction implementation</summary>\n\n"
+                                   "_bid 1 by codex, merged_\n\n"
+                                   "Added subtraction and boundary cases. The calculator accepts positive and negative operands, "
+                                   "reports malformed input, and keeps the existing addition behavior. "
+                                   "The focused checks and the complete example checks passed.\n\n"
+                                   "</details>\n\n<details>\n<summary>⚪ Multiplication implementation</summary>\n\n"
+                                   "_bid 2 by claude, pending_\n\nReview the multiplication implementation and test evidence.\n\n"
+                                   "</details>\n").encode(),
                               "text/markdown; charset=utf-8")
             elif legacy and (path.startswith(("/assets/", "/vendor/")) or path in ("/club.js", "/club.css")):
                 root = Path(HERE, "club").resolve()

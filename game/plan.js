@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { MovieRoom } from '/src/movie/movie.js';
+import { parseSections } from 'virtual:pantheon-plan-sections';
 
 const DEPTH = 30000000, SS = 2.25, WIDTH = 264, HEIGHT = 300, TOP = 114;
 const FONT = 'Arial, sans-serif';
@@ -8,13 +9,13 @@ let serial = 0;
 
 // Rasterize only the visible portion of the document; a long plan never
 // creates an oversized GPU texture.
-function layout(source, ctx) {
+function layout(sections, ctx, expanded) {
   const rows = [];
   let paragraph = [], code = false;
   const inline = s => s.split(/(`[^`]+`)/).map(part => part.startsWith('`') ? part.slice(1, -1) :
     part.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/(^|\s)_([^_\n]+)_(?=$|\s)/g, '$1$2')
       .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 ($2)')).join('');
-  function add(text, heading = false, fixed = false) {
+  function add(text, heading = false, fixed = false, disclosure = null) {
     const font = `${heading ? 'bold 14' : fixed ? '11' : '12'}px ${fixed ? 'monospace' : FONT}`;
     ctx.font = font;
     let line = '';
@@ -22,43 +23,61 @@ function layout(source, ctx) {
       if (!fixed && !line) word = word.trimStart();
       if (ctx.measureText(line + word).width <= WIDTH) { line += word; continue; }
       if (line && ctx.measureText(line + word).width > WIDTH) {
-        rows.push({ text: line.trimEnd(), font, height: heading ? 21 : 17, heading }); line = '';
+        rows.push({ text: line.trimEnd(), font, height: heading ? 21 : 17, heading, disclosure }); line = '';
       }
       if (!fixed) word = word.trimStart();
       if (ctx.measureText(word).width <= WIDTH) { line = word; continue; }
       // Long paths, hashes and code also fit on the paper.
       for (const character of word) {
         if (line && ctx.measureText(line + character).width > WIDTH) {
-          rows.push({ text: line, font, height: heading ? 21 : 17, heading }); line = '';
+          rows.push({ text: line, font, height: heading ? 21 : 17, heading, disclosure }); line = '';
         }
         if (line || character.trim() || fixed) line += character;
       }
     }
-    rows.push({ text: line, font, height: heading ? 21 : 17, heading });
+    rows.push({ text: line, font, height: heading ? 21 : 17, heading, disclosure });
   }
   const flush = () => { if (paragraph.length) { add(paragraph.join(' ')); paragraph = []; } };
-  for (const line of source.replace(/\r\n/g, '\n').split('\n')) {
+  function textLine(line) {
     const text = line.trim();
-    if (/^```/.test(text)) { flush(); code = !code; continue; }
-    if (code) { add(line, false, true); continue; }
-    if (!text || /^<\/?details\s*>$/.test(text)) { flush(); rows.push({ height: 8 }); continue; }
-    const heading = text.match(/^#{1,6}\s+(.+)/) || text.match(/^<summary>(.*?)<\/summary>$/);
-    if (heading) { flush(); add(heading[1], true); continue; }
-    if (/^(?:[-*+] |\d+[.)] )/.test(text)) { flush(); add(text.replace(/^[-*+] /, '• ')); continue; }
+    if (/^(?:```|~~~)/.test(text)) { flush(); code = !code; return; }
+    if (code) { add(line, false, true); return; }
+    if (!text) { flush(); rows.push({ height: 8 }); return; }
+    const heading = text.match(/^#{1,6}\s+(.+)/);
+    if (heading) { flush(); add(heading[1], true); return; }
+    if (/^(?:[-*+] |\d+[.)] )/.test(text)) { flush(); add(text.replace(/^[-*+] /, '• ')); return; }
     paragraph.push(text);
   }
+  function render(nodes) {
+    for (const node of nodes) {
+      if (node.type === 'text') { for (const line of node.lines) textLine(line); continue; }
+      flush();
+      const open = expanded.get(node.key) ?? node.defaultOpen;
+      add((open ? '▾ ' : '▸ ') + node.title, true, false, node.key);
+      rows.push({ height: 6 });
+      if (open) render(node.children);
+      flush(); rows.push({ height: 8 });
+    }
+  }
+  render(sections);
   flush();
-  const positioned = []; let y = 0;
+  const positioned = [], disclosures = []; let y = 0;
   for (const row of rows) {
     if (!row.text && y === 0) continue;
     positioned.push({ ...row, y }); y += row.height;
+    if (row.disclosure) {
+      const previous = disclosures.at(-1);
+      if (previous?.key === row.disclosure) previous.height += row.height;
+      else disclosures.push({ key: row.disclosure, y: y - row.height, height: row.height });
+    }
   }
-  return { rows: positioned, height: y };
+  return { rows: positioned, height: y, disclosures };
 }
 
 export class PlanPoster {
   constructor(scene) {
-    this.scene = scene; this.offset = 0; this.document = { rows: [], height: 0 }; this.raw = null;
+    this.scene = scene; this.offset = 0; this.document = { rows: [], height: 0, disclosures: [] }; this.raw = null;
+    this.expanded = new Map(); this.sections = [];
     this.isOpen = false; this.disposed = false;
     this.abort = new AbortController();
     this.key = 'club-plan-' + (++serial);
@@ -136,7 +155,13 @@ export class PlanPoster {
     shade.on('pointerdown', (_p, _x, _y, e) => { e.stopPropagation(); this.close(); });
     const paper = scene.add.image(380, 240, this.key + '-paper').setDisplaySize(342, 410).setInteractive();
     paper.on('pointerdown', (_p, _x, _y, e) => e.stopPropagation());
-    const body = scene.add.image(248, TOP, this.key).setOrigin(0).setDisplaySize(WIDTH, HEIGHT);
+    const body = scene.add.image(248, TOP, this.key).setOrigin(0).setDisplaySize(WIDTH, HEIGHT).setInteractive();
+    body.on('pointerdown', (pointer, _x, _y, e) => {
+      e.stopPropagation();
+      const y = pointer.worldY - TOP + this.offset;
+      const section = this.document.disclosures.find(d => y >= d.y && y < d.y + d.height);
+      if (section) this.toggleSection(section.key);
+    });
     this.scrollbar = scene.add.graphics();
     const track = scene.add.zone(525, TOP + HEIGHT / 2, 16, HEIGHT).setInteractive({ useHandCursor: true });
     let grab = 0;
@@ -184,16 +209,34 @@ export class PlanPoster {
       if (raw !== this.raw) {
         this.raw = raw;
         this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-        this.document = layout(raw || 'The market plan is empty.', this.ctx);
-        this.offset = Math.min(this.offset, this.maxOffset);
-        this.draw();
+        this.sections = parseSections(raw || 'The market plan is empty.');
+        this.relayout();
       }
     } catch (error) {
       if (!this.disposed && this.raw === null) this.message(error.message);
     } finally { this.fetching = false; }
   }
 
-  message(text) { this.document = layout(text, this.ctx); this.offset = 0; this.draw(); }
+  message(text) { this.document = layout(parseSections(text), this.ctx, this.expanded); this.offset = 0; this.draw(); }
+
+  relayout() {
+    this.document = layout(this.sections, this.ctx, this.expanded);
+    this.offset = Math.min(this.offset, this.maxOffset);
+    this.draw();
+  }
+
+  toggleSection(key) {
+    const find = nodes => {
+      for (const node of nodes) {
+        if (node.key === key) return node;
+        if (node.children) { const found = find(node.children); if (found) return found; }
+      }
+    };
+    const node = find(this.sections);
+    if (!node) return;
+    this.expanded.set(key, !(this.expanded.get(key) ?? node.defaultOpen));
+    this.relayout();
+  }
 
   get maxOffset() { return Math.max(0, this.document.height - HEIGHT); }
   get thumbHeight() { return Math.min(HEIGHT, Math.max(18, HEIGHT * HEIGHT / this.document.height)); }
@@ -212,7 +255,9 @@ export class PlanPoster {
     ctx.scale(SS, SS); ctx.textBaseline = 'top'; ctx.fillStyle = '#143647';
     for (const row of this.document.rows) {
       const y = row.y - this.offset;
-      if (row.text && y + row.height > 0 && y < HEIGHT) { ctx.font = row.font; ctx.fillText(row.text, 0, y + 1); }
+      if (row.text && y + row.height > 0 && y < HEIGHT) {
+        ctx.font = row.font; ctx.fillStyle = row.disclosure ? '#16556d' : '#143647'; ctx.fillText(row.text, 0, y + 1);
+      }
     }
     this.scene.textures.get(this.key).refresh();
     if (this.scrollbar) {
