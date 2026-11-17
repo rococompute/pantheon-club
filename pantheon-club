@@ -1,0 +1,628 @@
+#!/usr/bin/env python3
+"""pantheon-club: a club view of a Pantheon network, as the first tab of its cmux workspace.
+
+The market is drawn as a hall: each diplomat is a penguin in its agent's
+colour, working at its desk, waiting at the bell for you, asleep on the bench
+at a usage limit, or wandering between requests; the term's leader wears the
+laurel at the rostrum. Every other node (one without a diplomat: a cloud agent
+a diplomat started, or the node of the person browsing) is a puffer, in the
+colour of the diplomat it came from, floating after it; a puffer that came from
+no diplomat (yours) is pearl, and drifts about the hall on its own.
+
+  pantheon-club up NET [PANTHEON-CMUX UP ARGS...]
+                        pantheon-cmux up NET with these arguments, then attach
+  pantheon-club attach NET
+                        the club tab, first in the left half of NET's workspace
+                        (before the plan and the watchdog), and its server
+  pantheon-club down NET
+                        stop the club's server, then pantheon-cmux down NET
+  pantheon-club serve NET [--port N]
+                        the server alone, in the foreground (attach starts it in
+                        the background); it stops once NET's workspace is gone
+  pantheon-club state NET|RECORD
+                        the state the view draws, as JSON
+  pantheon-club view RECORD|demo [--port N]
+                        a run's record (~/.pantheon/runs/NAME), or a demo that
+                        changes as you watch, served for any browser; no cmux
+
+A node without a diplomat came from the diplomat named in NET/NODE/parent, when
+that file is there (whoever starts the node can write it); else from the
+diplomat whose name starts its name (claude-cloud1 from claude); else from a
+diplomat of its provider (claude-b from claude-a); else from none.
+
+Settings, from the environment:
+  PANTHEON_CMUX  pantheon-cmux (default: on PATH, else ../pantheon/integrations/cmux/pantheon-cmux
+                 beside this checkout, else beside $PANTHEON)
+  CMUX           the cmux CLI (default: cmux on PATH, else the one inside cmux.app)
+
+What it keeps lives in NET/.cmux/club: the server's port, pid and log, and the
+club tab's id.
+"""
+
+import json
+import os
+import random
+import re
+import signal
+import shutil
+import socket
+import subprocess
+import sys
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+PAGE = os.path.join(HERE, "club", "index.html")
+
+
+def die(msg):
+    print(f"pantheon-club: {msg}", file=sys.stderr)
+    sys.exit(1)
+
+
+def say(msg):
+    print(f"pantheon-club: {msg}", flush=True)
+
+
+# --- tools ---------------------------------------------------------------
+
+def cmux_bin():
+    if os.environ.get("CMUX"):
+        return os.environ["CMUX"]
+    if shutil.which("cmux"):
+        return "cmux"
+    b = os.environ.get("CMUX_BUNDLED_CLI_PATH")
+    if b and os.access(b, os.X_OK):
+        return b
+    return "/Applications/cmux.app/Contents/Resources/bin/cmux"
+
+
+def cm(*args, check=False, timeout=15):
+    try:
+        p = subprocess.run([cmux_bin(), *args], capture_output=True, text=True, timeout=timeout,
+                           env={**os.environ, "CMUX_QUIET": "1"})
+    except (OSError, subprocess.TimeoutExpired) as e:
+        if check:
+            die(f"cmux {args[0]} failed: {e}")
+        return None
+    if check and p.returncode != 0:
+        die(f"cmux {' '.join(args[:2])} failed: {p.stderr.strip() or p.stdout.strip()}")
+    return p.stdout if p.returncode == 0 else None
+
+
+def cm_json(*args):
+    out = cm("--json", *args)
+    try:
+        return json.loads(out) if out else None
+    except ValueError:
+        return None
+
+
+def need_cmux():
+    if not (shutil.which(cmux_bin()) or os.access(cmux_bin(), os.X_OK)):
+        die(f"no cmux CLI at {cmux_bin()}: install cmux (cmux.com), or set CMUX to its CLI")
+    if cm("list-workspaces") is None:
+        die("cmux doesn't answer: start cmux.app (or run this from a cmux terminal)")
+
+
+def pantheon_cmux():
+    if os.environ.get("PANTHEON_CMUX"):
+        return os.environ["PANTHEON_CMUX"]
+    if shutil.which("pantheon-cmux"):
+        return shutil.which("pantheon-cmux")
+    candidates = [os.path.join(HERE, "..", "pantheon", "integrations", "cmux", "pantheon-cmux")]
+    if os.environ.get("PANTHEON"):
+        candidates.append(os.path.join(os.path.dirname(os.environ["PANTHEON"]), "integrations", "cmux", "pantheon-cmux"))
+    for c in candidates:
+        if os.access(c, os.X_OK):
+            return os.path.realpath(c)
+    die("no pantheon-cmux: clone rococompute/pantheon beside this checkout, put pantheon-cmux on PATH, "
+        "or set PANTHEON_CMUX to it")
+
+
+# --- the network ---------------------------------------------------------
+
+def agents_of(net):
+    """NET's agents: its directories with a genesis and a key (a network) or a
+    status (a run's record, which never keeps keys)."""
+    out = []
+    for name in sorted(os.listdir(net)):
+        d = os.path.join(net, name)
+        if os.path.isdir(d) and os.path.isfile(os.path.join(d, "genesis.json")) and (
+                os.path.isfile(os.path.join(d, "key.json")) or os.path.isfile(os.path.join(d, "status.txt"))):
+            out.append(name)
+    return out
+
+
+def read(path, default=""):
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            return f.read()
+    except OSError:
+        return default
+
+
+def kind_of(agent):
+    return agent.split("-")[0]
+
+
+KIND_COLORS = {"claude": "#d97757", "codex": "#10a37f", "grok": "#3b82f6", "muse": "#a855f7"}
+SPARE_COLORS = ["#e11d48", "#f59e0b", "#14b8a6", "#6366f1", "#84cc16", "#ec4899", "#0ea5e9", "#f97316"]
+
+
+def colors_for(agents):
+    """A colour per agent: its provider's, then the spare ones, so two agents of
+    one provider (claude, claude-2) still differ."""
+    used, out, spare = set(), {}, iter(SPARE_COLORS * 4)
+    for a in agents:
+        c = KIND_COLORS.get(kind_of(a))
+        if c is None or c in used:
+            c = next(c2 for c2 in spare if c2 not in used)
+        used.add(c)
+        out[a] = c
+    return out
+
+
+def parse_status(text):
+    """status.txt: "height H  term T  leader L", "history ...", "task N [state] SPEC",
+    "bid N [state ...] task T by A REASON", "title|note|verdict N TEXT", "count A.K N",
+    "finished: ...", "no more tasks: N of K ..."."""
+    st = {"height": 0, "term": 0, "leader": None, "history": [], "tasks": [], "bids": [], "counts": {},
+          "finished": False, "done_votes": None}
+    titles, notes, verdicts = {}, {}, {}
+    for i, line in enumerate(text.splitlines()):
+        w = line.split()
+        if not w:
+            continue
+        if i == 0 and w[0] == "height":
+            for j in range(len(w) - 1):
+                if w[j] == "height":
+                    st["height"] = int(w[j + 1]) if w[j + 1].isdigit() else 0
+                elif w[j] == "term":
+                    st["term"] = int(w[j + 1]) if w[j + 1].isdigit() else 0
+                elif w[j] == "leader":
+                    l = w[j + 1]
+                    st["leader"] = None if l.startswith("(") else l
+        elif w[0] == "history":
+            st["history"] = w[1:]
+        elif w[0] == "task" and len(w) >= 3:
+            m = re.match(r"task (\d+) \[([a-z]+)\] ?(.*)", line)
+            if m:
+                st["tasks"].append({"id": int(m[1]), "state": m[2], "spec": m[3]})
+        elif w[0] == "bid" and len(w) >= 3:
+            m = re.match(r"bid (\d+) \[([a-z]+)[^\]]*\] task (\d+) by (\S+) ?(.*)", line)
+            if m:
+                st["bids"].append({"id": int(m[1]), "state": m[2], "task": int(m[3]), "by": m[4], "why": m[5]})
+        elif w[0] in ("title", "note", "verdict") and len(w) >= 2 and w[1].isdigit():
+            {"title": titles, "note": notes, "verdict": verdicts}[w[0]][int(w[1])] = line.split(" ", 2)[2] if len(w) > 2 else ""
+        elif w[0] == "count" and len(w) == 3 and "." in w[1]:
+            a, k = w[1].rsplit(".", 1)
+            st["counts"].setdefault(a, {})[k] = int(w[2]) if w[2].isdigit() else 0
+        elif line.startswith("finished:"):
+            st["finished"] = True
+        elif line.startswith("no more tasks:"):
+            m = re.match(r"no more tasks: (\d+) of (\d+)", line)
+            if m:
+                st["done_votes"] = [int(m[1]), int(m[2])]
+    for b in st["bids"]:
+        t = verdicts.get(b["id"]) if b["state"] in ("merged", "rejected") else None
+        b["title"] = t or titles.get(b["id"]) or notes.get(b["id"], "") or b["why"] or f"bid {b['id']} by {b['by']}"
+        b["bidder_title"] = titles.get(b["id"], "")
+    return st
+
+
+def market_title(st):
+    """As pantheon-cmux names the workspace: Market (X leader[, N/K to done]), Market, Done."""
+    if st["finished"]:
+        return "Done"
+    parts = []
+    if st["leader"]:
+        parts.append(f"{st['leader']} leader")
+    if st["done_votes"]:
+        parts.append(f"{st['done_votes'][0]}/{st['done_votes'][1]} to done")
+    return f"Market ({', '.join(parts)})" if parts else "Market"
+
+
+def short_task(spec):
+    """A task's spec, for the plan board: its repository and the goal step it
+    quotes, or its start."""
+    m = re.match(r'(\S+): "([^"]*)"', spec)
+    if m:
+        text = m[2]
+        repo = m[1]
+    else:
+        repo, text = "", spec
+    text = re.sub(r"\s+", " ", text).strip()
+    if len(text) > 140:
+        text = text[:139].rstrip() + "…"
+    return {"repo": repo, "text": text}
+
+
+def session_states(net, agents):
+    """Each diplomat's state from cmux's hooks (working, idle, done, completed,
+    needs_input, waiting, blocked, ended), matched by its tab's id."""
+    surfaces = {}
+    for a in agents:
+        s = read(os.path.join(net, ".cmux", a, "surface")).strip()
+        if s:
+            surfaces[a] = s.lower()
+    if not surfaces:
+        return {}
+    cur = cm_json("current", "--limit", "200") or {}
+    out = {}
+    for it in cur.get("items", []):
+        refs = [str(e.get("reference", "")).lower() for e in it.get("evidence", [])]
+        ids = refs + [str(it.get(k, "")).lower() for k in ("durable_surface_id", "resource_ref")]
+        for p in it.get("projections", []):
+            ids += [str(p.get(k, "")).lower() for k in ("panel_id", "stable_surface_id")]
+        for a, s in surfaces.items():
+            if a not in out and any(x.endswith(s) for x in ids if x):
+                live = [g for g in it.get("agents", []) if g.get("state") not in (None, "", "ended")]
+                pick = (live or it.get("agents", []) or [{}])[0]
+                out[a] = pick.get("state") or "none"
+    return out
+
+
+def parent_of(net, node, diplomats):
+    """The diplomat a node without one came from (see the top), or None."""
+    p = read(os.path.join(net, node, "parent")).strip()
+    if p in diplomats:
+        return p
+    by_name = [d for d in diplomats if node.startswith(d + "-") or node.startswith(d + ".")]
+    if by_name:
+        return max(by_name, key=len)
+    by_kind = [d for d in diplomats if kind_of(d) == kind_of(node)]
+    return by_kind[0] if by_kind else None
+
+
+PEARL = "#e8e4dc"
+
+
+def build_state(net, live=True):
+    """What the view draws, from NET (a network, with cmux) or a run's record."""
+    net = os.path.abspath(net)
+    agents = agents_of(net)
+    if not agents:
+        die(f"{net} has no network (no agent with genesis.json and key.json or status.txt): "
+            "run pantheon init first, or give a run's record (~/.pantheon/runs/NAME)")
+    st = parse_status(read(os.path.join(net, agents[0], "status.txt")))
+    run = read(os.path.join(net, "run.txt"))
+    m = re.search(r"^diplomats (.*)$", run, re.M)
+    recorded = set(m[1].split()) - {"none"} if m else set()
+    diplomats = [a for a in agents if os.path.isfile(os.path.join(net, ".cmux", a, "surface")) or a in recorded]
+    states = session_states(net, diplomats) if live else {}
+    colors = colors_for(diplomats)
+    out_agents = []
+    for a in agents:
+        mine = [b for b in st["bids"] if b["by"] == a]
+        own = read(os.path.join(net, a, "status.txt"))
+        c = st["counts"].get(a, {})
+        dip = a in diplomats
+        parent = None if dip else parent_of(net, a, diplomats)
+        limited = bool(re.search(r"^LIMIT", own, re.M))
+        if dip:
+            state = "limited" if limited else states.get(a, "none" if live else "idle")
+        else:
+            # a puffer: puffed up while it has a bid out, asleep at a usage limit
+            state = "limited" if limited else "working" if any(b["state"] == "pending" for b in mine) else "idle"
+        out_agents.append({
+            "name": a, "kind": kind_of(a), "diplomat": dip, "parent": parent,
+            "color": colors[a] if dip else colors[parent] if parent else PEARL,
+            "state": state,
+            "leader": st["leader"] == a, "merges": c.get("merges", 0), "led": c.get("led", 0),
+            "pending": [{"id": b["id"], "title": b["title"]} for b in mine if b["state"] == "pending"],
+        })
+    open_tasks = [t for t in st["tasks"] if t["state"] == "open"]
+    return {
+        "network": os.path.basename(net).lstrip(".") or net,
+        "title": market_title(st), "height": st["height"], "term": st["term"], "leader": st["leader"],
+        "finished": st["finished"], "done_votes": st["done_votes"],
+        "agents": out_agents,
+        "tasks": [dict(id=t["id"], **short_task(t["spec"])) for t in open_tasks[-3:]],
+        "bids": [{k: b[k] for k in ("id", "state", "task", "by", "title")} for b in st["bids"][-20:]],
+        "live": live,
+        "at": time.time(),
+    }
+
+
+# --- the demo ------------------------------------------------------------
+
+class Demo:
+    """A network that changes as you watch: four diplomats, states that move,
+    leaders that rotate, bids that merge, and puffers (nodes without a
+    diplomat) that come and go."""
+
+    STATES = ["working", "working", "working", "idle", "needs_input", "working", "limited", "idle"]
+
+    def __init__(self):
+        self.t0 = time.time()
+
+    def state(self):
+        k = int((time.time() - self.t0) // 6)
+        dips = ["claude", "codex", "grok", "muse"]
+        colors = colors_for(dips)
+        leader = dips[(k // 4) % 4]
+        # puffers: two cloud agents of codex's, one of claude's (only some of the
+        # time), and the browsing person's node
+        nodes = [("codex-cloud1", "codex"), ("codex-cloud2", "codex"), ("you", None)]
+        if k % 8 < 6:
+            nodes.insert(0, ("claude-cloud1", "claude"))
+        agents = []
+        for i, (a, parent) in enumerate([(d, None) for d in dips] + nodes):
+            dip = a in dips
+            agents.append({"name": a, "kind": kind_of(a), "diplomat": dip, "parent": parent,
+                           "color": colors[a] if dip else colors[parent] if parent else PEARL,
+                           "state": self.STATES[(k + i * 3) % len(self.STATES)] if dip else
+                           ("working" if (k + i) % 2 else "idle"),
+                           "leader": a == leader, "merges": (k + i) // 5, "led": k // 4,
+                           "pending": [{"id": 100 + k, "title": "Tighten the parser's errors"}] if (k + i) % 3 == 0 else []})
+        bids = []
+        for j in range(max(0, k - 8), k + 1):
+            st = "merged" if j % 3 == 0 and j < k else "rejected" if j % 5 == 4 and j < k else "cleared" if j < k - 1 else "pending"
+            bids.append({"id": j + 1, "state": st, "task": j // 3 + 1, "by": dips[j % 4],
+                         "title": ["Add a sub command", "Explain the cache in the README", "Prove the codec round trip",
+                                   "Fix the leader draw's off-by-one"][j % 4]})
+        return {"network": "demo", "title": f"Market ({leader} leader)", "height": 1200 + k * 7, "term": 10 + k // 4,
+                "leader": leader, "finished": False, "done_votes": None, "agents": agents,
+                "tasks": [{"id": k // 3 + 1, "repo": "calc", "text": "add a sub command, with tests, and say so in the README"}],
+                "bids": bids, "live": True, "at": time.time()}
+
+
+# --- the server ----------------------------------------------------------
+
+def make_handler(source, net=None):
+    cache = {"at": 0.0, "body": b"{}"}
+    lock = threading.Lock()
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def send(self, code, body, ctype):
+            self.send_response(code)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            path = self.path.split("?")[0]
+            if path in ("/", "/index.html"):
+                self.send(200, read(PAGE).encode(), "text/html; charset=utf-8")
+            elif path == "/state.json":
+                with lock:
+                    if time.time() - cache["at"] > 1.5:
+                        try:
+                            cache["body"] = json.dumps(source()).encode()
+                        except (SystemExit, Exception) as e:  # the page says what went wrong
+                            cache["body"] = json.dumps({"error": f"{type(e).__name__}: {e}"}).encode()
+                        cache["at"] = time.time()
+                    body = cache["body"]
+                self.send(200, body, "application/json")
+            else:
+                self.send(404, b"not found\n", "text/plain")
+
+        def do_POST(self):
+            # /focus?agent=A: A's tab (its diplomat's session, else its node), selected
+            m = re.match(r"/focus\?agent=([A-Za-z0-9_.-]+)$", self.path)
+            if not (m and net):
+                return self.send(404, b"not found\n", "text/plain")
+            a = m[1]
+            s = read(os.path.join(net, ".cmux", a, "surface")).strip() or read(os.path.join(net, ".cmux", a, "node-surface")).strip()
+            w = read(os.path.join(net, ".cmux", "workspace")).strip()
+            ok = bool(s and w) and cm("focus-panel", "--panel", s, "--workspace", w) is not None
+            self.send(200 if ok else 409, b"ok\n" if ok else b"no tab for that agent\n", "text/plain")
+
+    return Handler
+
+
+def free_port():
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def serve(source, port, net=None, on_ready=None, alive=None):
+    httpd = ThreadingHTTPServer(("127.0.0.1", port), make_handler(source, net))
+    if on_ready:
+        on_ready(httpd.server_address[1])
+    if alive:
+        def watch():
+            while True:
+                time.sleep(15)
+                if not alive():
+                    httpd.shutdown()
+                    return
+        threading.Thread(target=watch, daemon=True).start()
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        pass
+
+
+# --- commands ------------------------------------------------------------
+
+def net_arg(args, cmd):
+    if not args:
+        die(f"which network? pantheon-club {cmd} NET (a directory made by pantheon init)")
+    net = os.path.abspath(args[0])
+    if not os.path.isdir(net):
+        die(f"no directory {args[0]}: make a network with pantheon init {args[0]} first")
+    return net
+
+
+def port_arg(args):
+    if "--port" in args:
+        i = args.index("--port")
+        try:
+            return int(args[i + 1])
+        except (IndexError, ValueError):
+            die("--port wants a number")
+    return 0
+
+
+def club_dir(net):
+    d = os.path.join(net, ".cmux", "club")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def workspace_alive(net):
+    w = read(os.path.join(net, ".cmux", "workspace")).strip()
+    if not w:
+        return False
+    out = cm("--json", "--id-format", "uuids", "list-workspaces")
+    return out is None or w in out  # cmux not answering: keep serving
+
+
+def server_up(net):
+    d = os.path.join(net, ".cmux", "club")
+    pid, port = read(os.path.join(d, "pid")).strip(), read(os.path.join(d, "port")).strip()
+    if not (pid.isdigit() and port.isdigit()):
+        return None
+    try:
+        os.kill(int(pid), 0)
+    except OSError:
+        return None
+    try:
+        with socket.create_connection(("127.0.0.1", int(port)), timeout=1):
+            return int(port)
+    except OSError:
+        return None
+
+
+def cmd_serve(args):
+    net = net_arg(args, "serve")
+    d = club_dir(net)
+
+    def ready(port):
+        with open(os.path.join(d, "port"), "w") as f:
+            f.write(f"{port}\n")
+        with open(os.path.join(d, "pid"), "w") as f:
+            f.write(f"{os.getpid()}\n")
+        say(f"serving {net}'s club at http://127.0.0.1:{port}/ (it stops once the workspace is gone)")
+
+    serve(lambda: build_state(net), port_arg(args), net=net, on_ready=ready,
+          alive=lambda: os.path.isfile(os.path.join(net, ".cmux", "workspace")) and workspace_alive(net))
+
+
+def start_server(net):
+    port = server_up(net)
+    if port:
+        return port
+    d = club_dir(net)
+    for f in ("port", "pid"):
+        try:
+            os.remove(os.path.join(d, f))
+        except OSError:
+            pass
+    log = open(os.path.join(d, "server.log"), "a")
+    subprocess.Popen([sys.executable, os.path.realpath(__file__), "serve", net], stdout=log, stderr=log,
+                     stdin=subprocess.DEVNULL, start_new_session=True)
+    for _ in range(50):
+        port = server_up(net)
+        if port:
+            return port
+        time.sleep(0.1)
+    die(f"the club's server didn't start: read {os.path.join(d, 'server.log')}")
+
+
+def left_pane(w):
+    """The left half's pane: the leftmost one (the plan's, in pantheon-cmux's plan layout)."""
+    panes = (cm_json("--id-format", "both", "list-panes", "--workspace", w) or {}).get("panes", [])
+    if not panes:
+        die(f"cmux lists no panes in workspace {w}")
+    return min(panes, key=lambda p: (p.get("pixel_frame", {}).get("x", 0), p.get("pixel_frame", {}).get("y", 0)))
+
+
+def cmd_attach(args):
+    net = net_arg(args, "attach")
+    need_cmux()
+    w = read(os.path.join(net, ".cmux", "workspace")).strip()
+    if not (w and workspace_alive(net)):
+        die(f"{net} isn't up in cmux: pantheon-club up {args[0]} (or pantheon-cmux up {args[0]}) first")
+    port = start_server(net)
+    url = f"http://127.0.0.1:{port}/"
+    d = club_dir(net)
+    pane = left_pane(w)
+    old = read(os.path.join(d, "surface")).strip()
+    if old and old in json.dumps(pane):
+        # the tab is there from an earlier attach: pointed at the server, and first
+        cm("browser", "--surface", old, "navigate", url)
+        s = old
+    else:
+        out = cm("--id-format", "both", "new-surface", "--type", "browser", "--pane", pane["id"],
+                 "--workspace", w, "--url", url, "--focus", "false", check=True)
+        m = re.search(r"\(([0-9A-F-]{36})\)", out or "")
+        if not m:
+            die(f"cmux made no club tab: {out}")
+        s = m[1]
+        with open(os.path.join(d, "surface"), "w") as f:
+            f.write(f"{s}\n")
+        cm("rename-tab", "--workspace", w, "--surface", s, "club")
+    cm("reorder-surface", "--workspace", w, "--surface", s, "--index", "0", "--focus", "true")
+    say(f"the club is the first tab of {net}'s left half, before the plan and the watchdog ({url})")
+
+
+def cmd_up(args):
+    net = net_arg(args, "up")
+    pc = pantheon_cmux()
+    r = subprocess.run([pc, "up", *args])
+    if r.returncode != 0:
+        sys.exit(r.returncode)
+    cmd_attach([net])
+
+
+def cmd_down(args):
+    net = net_arg(args, "down")
+    pid = read(os.path.join(net, ".cmux", "club", "pid")).strip()
+    if pid.isdigit():
+        try:
+            os.kill(int(pid), signal.SIGTERM)
+            say("stopped the club's server")
+        except OSError:
+            pass
+    for f in ("pid", "port", "surface"):
+        try:
+            os.remove(os.path.join(net, ".cmux", "club", f))
+        except OSError:
+            pass
+    r = subprocess.run([pantheon_cmux(), "down", net])
+    sys.exit(r.returncode)
+
+
+def cmd_state(args):
+    net = net_arg(args, "state")
+    live = os.path.isfile(os.path.join(net, ".cmux", "workspace"))
+    print(json.dumps(build_state(net, live=live), indent=1))
+
+
+def cmd_view(args):
+    if not args:
+        die("view what? pantheon-club view RECORD (a run's record, ~/.pantheon/runs/NAME) or pantheon-club view demo")
+    if args[0] == "demo":
+        source = Demo().state
+    else:
+        net = net_arg(args, "view")
+        build_state(net, live=False)  # says what's wrong, before serving
+        source = lambda: build_state(net, live=False)  # noqa: E731
+    serve(source, port_arg(args), on_ready=lambda p: say(f"open http://127.0.0.1:{p}/ (ctrl-c stops it)"))
+
+
+def main(argv):
+    cmds = {"up": cmd_up, "attach": cmd_attach, "down": cmd_down, "serve": cmd_serve, "state": cmd_state,
+            "view": cmd_view}
+    if not argv or argv[0] in ("help", "-h", "--help"):
+        print(__doc__.strip())
+        return
+    if argv[0] not in cmds:
+        print(__doc__.strip(), file=sys.stderr)
+        sys.exit(1)
+    cmds[argv[0]](argv[1:])
+
+
+if __name__ == "__main__":
+    random.seed()
+    main(sys.argv[1:])
