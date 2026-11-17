@@ -2,7 +2,7 @@
 
 A local, personal, non-commercial fan extension of [Pantheon’s cmux integration](https://github.com/rococompute/pantheon/tree/master/integrations/cmux), using the **actual [Claude Penguin game](https://github.com/gabixou/claude-penguin)** rather than a recreated scene.
 
-You play your own penguin with the original game’s controls, map, rooms, wardrobe, igloo editor and available minigames. Pantheon penguins and their cloud-worker puffles appear **only in your own igloo**. They use the game’s native entities, colors, animations and follower logic. Leaving the igloo removes them; returning restores them. The Agents panel shows work status and can focus an agent’s cmux tab.
+You play your own penguin with the original game’s controls, map, rooms, wardrobe and available minigames. Pantheon penguins and their cloud-worker puffles appear **only in your own igloo**. They use the game’s native entities, colors, animations and follower logic. Leaving the igloo removes them; returning restores them. The Agents panel shows work status and can focus an agent’s cmux tab. The extra My igloo and floating Edit Igloo buttons are omitted.
 
 ## Run locally
 

@@ -188,6 +188,12 @@ export function installClub(RoomScene) {
   const create = RoomScene.prototype.create;
   RoomScene.prototype.create = function (...args) {
     const result = create.apply(this, args);
+    // Keep the upstream igloo and layout, without its floating editor button.
+    this.igloo._syncEditBtn = () => {
+      this.igloo._editBtn?.remove();
+      this.igloo._editBtn = null;
+    };
+    this.igloo._syncEditBtn();
     window.__pantheonClub = new IglooClub(this);
     return result;
   };
