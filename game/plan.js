@@ -1,14 +1,14 @@
 import Phaser from 'phaser';
 import { MovieRoom } from '/src/movie/movie.js';
 
-const DEPTH = 30000000, SS = 2.25, WIDTH = 264, HEIGHT = 272;
+const DEPTH = 30000000, SS = 2.25, WIDTH = 264, HEIGHT = 300, TOP = 114;
 const FONT = 'Arial, sans-serif';
 const ID = [1, 0, 0, 1, 0, 0];
 let serial = 0;
 
-// Lay out all of the document as small, fixed-size pages. Only the current
-// page is rasterized, so a long plan never creates an oversized GPU texture.
-function paginate(source, ctx) {
+// Rasterize only the visible portion of the document; a long plan never
+// creates an oversized GPU texture.
+function layout(source, ctx) {
   const rows = [];
   let paragraph = [], code = false;
   const inline = s => s.split(/(`[^`]+`)/).map(part => part.startsWith('`') ? part.slice(1, -1) :
@@ -48,19 +48,17 @@ function paginate(source, ctx) {
     paragraph.push(text);
   }
   flush();
-  const pages = [[]]; let y = 0;
-  for (const [i, row] of rows.entries()) {
-    const needed = row.height + (row.heading ? rows[i + 1]?.height || 0 : 0);
-    if (y + needed > HEIGHT && pages.at(-1).length) { pages.push([]); y = 0; }
+  const positioned = []; let y = 0;
+  for (const row of rows) {
     if (!row.text && y === 0) continue;
-    pages.at(-1).push({ ...row, y }); y += row.height;
+    positioned.push({ ...row, y }); y += row.height;
   }
-  return pages;
+  return { rows: positioned, height: y };
 }
 
 export class PlanPoster {
   constructor(scene) {
-    this.scene = scene; this.page = 0; this.pages = [[]]; this.raw = null;
+    this.scene = scene; this.offset = 0; this.document = { rows: [], height: 0 }; this.raw = null;
     this.isOpen = false; this.disposed = false;
     this.abort = new AbortController();
     this.key = 'club-plan-' + (++serial);
@@ -68,17 +66,27 @@ export class PlanPoster {
     this.body.width = Math.ceil(WIDTH * SS); this.body.height = Math.ceil(HEIGHT * SS);
     this.ctx = this.body.getContext('2d');
     scene.textures.addCanvas(this.key, this.body);
-    // A native catalogue sheet, shared by the small poster and reader.
+    // The native Ski Hill button opens a native catalogue paper sheet.
     this.ready = this.loadPaper();
     this.onKey = event => {
       if (!this.isOpen) return;
       if (event.key === 'Escape') this.close();
-      else if (['ArrowRight', 'PageDown'].includes(event.key)) this.turn(1);
-      else if (['ArrowLeft', 'PageUp'].includes(event.key)) this.turn(-1);
+      else if (event.key === 'ArrowDown') this.scroll(34);
+      else if (event.key === 'ArrowUp') this.scroll(-34);
+      else if (event.key === 'PageDown') this.scroll(HEIGHT * .85);
+      else if (event.key === 'PageUp') this.scroll(-HEIGHT * .85);
+      else if (event.key === 'Home') this.scrollTo(0);
+      else if (event.key === 'End') this.scrollTo(this.maxOffset);
       else return;
       event.preventDefault();
     };
     scene.input.keyboard.on('keydown', this.onKey);
+    this.onWheel = (pointer, _objects, _dx, dy, _dz, event) => {
+      if (!this.isOpen || pointer.worldX < 209 || pointer.worldX > 551 || pointer.worldY < 35 || pointer.worldY > 445) return;
+      const scale = scene.scale.gameSize.height / scene.scale.displaySize.height / scene.cameras.main.zoom;
+      this.scroll(dy * scale); event?.preventDefault();
+    };
+    scene.input.on('wheel', this.onWheel);
     this.timer = setInterval(() => { if (this.isOpen) this.refresh(); }, 2000);
   }
 
@@ -94,12 +102,19 @@ export class PlanPoster {
       await movie.renderLayer(entry, sheet, SS, matrix);
       if (this.disposed) return;
       this.scene.textures.addCanvas(this.key + '-paper', sheet);
-      this.button = this.scene.add.image(724, 43, this.key + '-paper').setDisplaySize(48, 58)
+      const hill = await MovieRoom.load('/assets/movies/mtn');
+      for (const [state, id] of [['up', 107], ['over', 108]]) {
+        const icon = document.createElement('canvas');
+        icon.width = 64 * SS; icon.height = 56 * SS;
+        // Original mtn_cat_btn up/over shapes, with a shared padded origin.
+        await hill.renderLayer({ id, matrix: ID }, icon, SS, [1, 0, 0, 1, 3, 3]);
+        if (this.disposed) return;
+        this.scene.textures.addCanvas(this.key + '-icon-' + state, icon);
+      }
+      this.button = this.scene.add.image(718, 42, this.key + '-icon-up').setDisplaySize(64, 56)
         .setDepth(DEPTH).setInteractive({ useHandCursor: true });
-      this.label = this.scene.add.text(724, 40, 'PLAN', { fontFamily: 'GoPenguin, Arial', fontSize: '9px', fontStyle: 'bold', color: '#15475c' })
-        .setOrigin(.5).setDepth(DEPTH + 1);
-      this.button.on('pointerover', () => this.button.setAlpha(.85));
-      this.button.on('pointerout', () => this.button.setAlpha(1));
+      this.button.on('pointerover', () => this.button.setTexture(this.key + '-icon-over'));
+      this.button.on('pointerout', () => this.button.setTexture(this.key + '-icon-up'));
       this.button.on('pointerdown', (_p, _x, _y, e) => { e.stopPropagation(); this.open(); });
     } catch (error) { console.error('[plan poster]', error); }
   }
@@ -121,12 +136,23 @@ export class PlanPoster {
     shade.on('pointerdown', (_p, _x, _y, e) => { e.stopPropagation(); this.close(); });
     const paper = scene.add.image(380, 240, this.key + '-paper').setDisplaySize(342, 410).setInteractive();
     paper.on('pointerdown', (_p, _x, _y, e) => e.stopPropagation());
-    const title = scene.add.text(380, 76, 'PLAN', { fontFamily: 'GoPenguin, Arial', fontSize: '25px', fontStyle: 'bold', color: '#15475c' }).setOrigin(.5);
-    const body = scene.add.image(248, 114, this.key).setOrigin(0).setDisplaySize(WIDTH, HEIGHT);
-    this.counter = scene.add.text(380, 418, '', { fontFamily: 'Arial', fontSize: '10px', color: '#15475c' }).setOrigin(.5);
-    this.sheet.add([shade, paper, title, body, this.counter]);
-    this.previous = this.control(247, 416, '‹', () => this.turn(-1), 'Previous plan page');
-    this.next = this.control(513, 416, '›', () => this.turn(1), 'Next plan page');
+    const body = scene.add.image(248, TOP, this.key).setOrigin(0).setDisplaySize(WIDTH, HEIGHT);
+    this.scrollbar = scene.add.graphics();
+    const track = scene.add.zone(525, TOP + HEIGHT / 2, 16, HEIGHT).setInteractive({ useHandCursor: true });
+    let grab = 0;
+    const seek = pointer => {
+      if (this.maxOffset) this.scrollTo((pointer.worldY - TOP - grab) / (HEIGHT - this.thumbHeight) * this.maxOffset);
+    };
+    track.on('pointerdown', (pointer, _x, _y, e) => {
+      e.stopPropagation();
+      const top = this.maxOffset ? this.offset / this.maxOffset * (HEIGHT - this.thumbHeight) : 0;
+      const y = pointer.worldY - TOP;
+      if (y >= top && y <= top + this.thumbHeight) grab = y - top;
+      else { grab = this.thumbHeight / 2; seek(pointer); }
+    });
+    scene.input.setDraggable(track);
+    track.on('drag', seek);
+    this.sheet.add([shade, paper, body, this.scrollbar, track]);
     this.control(526, 58, '×', () => this.close(), 'Close plan');
   }
 
@@ -137,7 +163,7 @@ export class PlanPoster {
     scene.playerCard?.close(); scene.wardrobe?.close(); scene.catalogue?.close();
     if (!this.sheet) this.buildReader();
     this.isOpen = true; scene._clubPlanOpen = true;
-    this.sheet.setVisible(true); this.button.setVisible(false); this.label.setVisible(false);
+    this.sheet.setVisible(true); this.button.setVisible(false);
     if (this.raw === null) this.message('Loading the market plan…');
     else this.draw();
     this.refresh();
@@ -145,7 +171,7 @@ export class PlanPoster {
 
   close() {
     this.isOpen = false; this.scene._clubPlanOpen = false;
-    this.sheet?.setVisible(false); this.button?.setVisible(true); this.label?.setVisible(true);
+    this.sheet?.setVisible(false); this.button?.setVisible(true);
   }
 
   async refresh() {
@@ -158,8 +184,8 @@ export class PlanPoster {
       if (raw !== this.raw) {
         this.raw = raw;
         this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-        this.pages = paginate(raw || 'The market plan is empty.', this.ctx);
-        this.page = Math.min(this.page, this.pages.length - 1);
+        this.document = layout(raw || 'The market plan is empty.', this.ctx);
+        this.offset = Math.min(this.offset, this.maxOffset);
         this.draw();
       }
     } catch (error) {
@@ -167,33 +193,47 @@ export class PlanPoster {
     } finally { this.fetching = false; }
   }
 
-  message(text) { this.pages = paginate(text, this.ctx); this.page = 0; this.draw(); }
+  message(text) { this.document = layout(text, this.ctx); this.offset = 0; this.draw(); }
 
-  turn(delta) {
-    const page = Phaser.Math.Clamp(this.page + delta, 0, this.pages.length - 1);
-    if (page === this.page) return;
-    this.page = page; this.draw();
-    // The native catalogue also flips by replacing the current page texture.
+  get maxOffset() { return Math.max(0, this.document.height - HEIGHT); }
+  get thumbHeight() { return Math.min(HEIGHT, Math.max(18, HEIGHT * HEIGHT / this.document.height)); }
+
+  scroll(delta) { this.scrollTo(this.offset + delta); }
+
+  scrollTo(offset) {
+    const next = Phaser.Math.Clamp(offset, 0, this.maxOffset);
+    if (next === this.offset) return;
+    this.offset = next; this.draw();
   }
 
   draw() {
     const ctx = this.ctx;
     ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, this.body.width, this.body.height);
     ctx.scale(SS, SS); ctx.textBaseline = 'top'; ctx.fillStyle = '#143647';
-    for (const row of this.pages[this.page] || []) {
-      if (row.text) { ctx.font = row.font; ctx.fillText(row.text, 0, row.y + 1); }
+    for (const row of this.document.rows) {
+      const y = row.y - this.offset;
+      if (row.text && y + row.height > 0 && y < HEIGHT) { ctx.font = row.font; ctx.fillText(row.text, 0, y + 1); }
     }
     this.scene.textures.get(this.key).refresh();
-    this.counter?.setText(`${this.page + 1} / ${this.pages.length}`);
-    this.previous?.setAlpha(this.page ? 1 : .25);
-    this.next?.setAlpha(this.page < this.pages.length - 1 ? 1 : .25);
+    if (this.scrollbar) {
+      this.scrollbar.clear();
+      if (this.maxOffset) {
+        const height = this.thumbHeight;
+        const y = TOP + this.offset / this.maxOffset * (HEIGHT - height);
+        this.scrollbar.lineStyle(2, 0x16556d, .15).lineBetween(525, TOP, 525, TOP + HEIGHT);
+        this.scrollbar.fillStyle(0x16556d, .65).fillRoundedRect(523, y, 4, height, 2);
+      }
+    }
   }
 
   destroy() {
     this.disposed = true; this.abort.abort(); clearInterval(this.timer);
     this.scene.input.keyboard.off('keydown', this.onKey);
-    this.close(); this.sheet?.destroy(true); this.button?.destroy(); this.label?.destroy();
+    this.scene.input.off('wheel', this.onWheel);
+    this.close(); this.sheet?.destroy(true); this.button?.destroy();
     this.scene.textures.remove(this.key);
-    if (this.scene.textures.exists(this.key + '-paper')) this.scene.textures.remove(this.key + '-paper');
+    for (const suffix of ['-paper', '-icon-up', '-icon-over']) {
+      if (this.scene.textures.exists(this.key + suffix)) this.scene.textures.remove(this.key + suffix);
+    }
   }
 }

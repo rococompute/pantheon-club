@@ -4,7 +4,7 @@ The visual source is [Claude Penguin by Arenovisk (gabixou)](https://github.com/
 
 The default Club View now runs the full upstream Phaser/Vite client and Node/SQLite server. `scripts/setup-game` fetches the pinned checkout and installs its lockfile dependencies into ignored `.upstream/claude-penguin/`; those files are not republished by this repository. Upstream sources stay unchanged on disk. The local adapter installs native penguin and puffle entities inside the player's igloo and constrains the game server to loopback. No public game server or public hosting is used.
 
-The plan poster and its centered, paginated reader reuse the native paper from `client/public/assets/catalogues/lodge` (main-frame shape 6) through the upstream `MovieRoom` renderer. The plan text and page controls are drawn inside Phaser, with no surrounding-page overlay. Paper assets are read from the locally installed pinned checkout.
+The plan poster reuses the original Ski Hill `mtn_cat_btn` artwork from `client/public/assets/movies/mtn`: shape 107 for its normal state and shape 108 for its hover state. It is rendered at native size without added lettering. The centered, scrolling reader uses the native paper from `client/public/assets/catalogues/lodge` (main-frame shape 6). The upstream `MovieRoom` renderer supplies the artwork; plan text and scroll controls stay inside Phaser, with no surrounding-page overlay. These assets are read from the locally installed pinned checkout.
 
 The copied files described below belong to the preserved standalone Coffee Shop prototype (`pantheon-club legacy-view`), not the new default game.
 
