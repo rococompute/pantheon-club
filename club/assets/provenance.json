@@ -1,0 +1,51 @@
+{
+  "repository": "https://github.com/gabixou/claude-penguin",
+  "commit": "db36a6d22fd745edc4300b4c562efbc862e1e06d",
+  "files": [
+    {
+      "local": "club/assets/coffee-atlas.png",
+      "source": "client/public/assets/rooms-swl/swl-coffee-0.png",
+      "git_blob_sha": "483498538aeebab876cd4742b50923903120c2ce"
+    },
+    {
+      "local": "club/assets/coffee.swl",
+      "source": "client/public/assets/scenes/coffee.swl",
+      "git_blob_sha": "cc0506fa830e8ed9ab8ac43d7cf88c80a9d9ee83"
+    },
+    {
+      "local": "club/assets/penguin-atlas.png",
+      "source": "client/public/assets/penguin-atlas.png",
+      "git_blob_sha": "39b7becc231941497fbe678a9d5baacd08388a47"
+    },
+    {
+      "local": "club/assets/penguin-body.png",
+      "source": "client/public/assets/penguin-body.png",
+      "git_blob_sha": "47855e66cfebba423e8aab53016540b03529a7ce"
+    },
+    {
+      "local": "club/assets/penguin-frames.json",
+      "source": "client/public/assets/penguin-frames.json",
+      "git_blob_sha": "f8b6ba7a33b370276a0e14c890daa37c1fe477e2"
+    },
+    {
+      "local": "club/assets/puffle.pack",
+      "source": "client/public/assets/puffle-icons/blue/chars/chunk-0-cf65db61.pack",
+      "git_blob_sha": "d81828a16a65a2c6ea86c8aa2c6895cc72d04a92"
+    },
+    {
+      "local": "club/assets/puffle.json",
+      "source": "client/public/assets/puffle-icons/blue/timelines.json",
+      "git_blob_sha": "714b8cb72dfab0a911e3ca6846cce5cc8e68166e"
+    },
+    {
+      "local": "club/vendor/swl.js",
+      "source": "client/src/swl/swl.js",
+      "git_blob_sha": "9670e5b6afddbc7b4f898479964ffdbb05282ba5"
+    },
+    {
+      "local": "club/vendor/swlCanvas.js",
+      "source": "client/src/swl/swlCanvas.js",
+      "git_blob_sha": "de9ecdfeb68e1bbc408d8a161db6daea56a5c545"
+    }
+  ]
+}

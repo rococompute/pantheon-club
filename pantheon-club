@@ -24,6 +24,10 @@ no diplomat (yours) is pearl, and drifts about the hall on its own.
   pantheon-club view RECORD|demo [--port N]
                         a run's record (~/.pantheon/runs/NAME), or a demo that
                         changes as you watch, served for any browser; no cmux
+  pantheon-club worker NET NAME --parent DIPLOMAT [--state STATE] [--task TEXT]
+                        register or update a spawned provider cloud task as a
+                        puffle; --remove dismisses it. attach also installs a
+                        club-worker helper in each diplomat's desk.
 
 A node without a diplomat came from the diplomat named in NET/NODE/parent, when
 that file is there (whoever starts the node can write it); else from the
@@ -40,6 +44,9 @@ club tab's id.
 """
 
 import json
+import argparse
+import fcntl
+import mimetypes
 import os
 import random
 import re
@@ -50,6 +57,8 @@ import subprocess
 import sys
 import threading
 import time
+import shlex
+from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HERE = os.path.dirname(os.path.realpath(__file__))
@@ -154,11 +163,12 @@ SPARE_COLORS = ["#e11d48", "#f59e0b", "#14b8a6", "#6366f1", "#84cc16", "#ec4899"
 def colors_for(agents):
     """A colour per agent: its provider's, then the spare ones, so two agents of
     one provider (claude, claude-2) still differ."""
-    used, out, spare = set(), {}, iter(SPARE_COLORS * 4)
+    used, out = set(), {}
     for a in agents:
         c = KIND_COLORS.get(kind_of(a))
         if c is None or c in used:
-            c = next(c2 for c2 in spare if c2 not in used)
+            c = next((c2 for c2 in SPARE_COLORS if c2 not in used),
+                     '#%06x' % ((len(out) * 0x9e3779 + 0x487abb) & 0xffffff))
         used.add(c)
         out[a] = c
     return out
@@ -313,6 +323,14 @@ def build_state(net, live=True):
             "leader": st["leader"] == a, "merges": c.get("merges", 0), "led": c.get("led", 0),
             "pending": [{"id": b["id"], "title": b["title"]} for b in mine if b["state"] == "pending"],
         })
+    # Provider cloud tasks have no consensus node or key of their own.
+    for worker in read_workers(net).values():
+        parent = worker.get("parent")
+        if parent not in diplomats or worker["name"] in agents:
+            continue
+        out_agents.append({**worker, "diplomat": False, "kind": kind_of(parent),
+                           "color": colors[parent], "leader": False, "merges": 0,
+                           "led": 0, "pending": [], "cloud": True})
     open_tasks = [t for t in st["tasks"] if t["state"] == "open"]
     return {
         "network": os.path.basename(net).lstrip(".") or net,
@@ -401,13 +419,23 @@ def make_handler(source, net=None):
                         cache["at"] = time.time()
                     body = cache["body"]
                 self.send(200, body, "application/json")
+            elif path.startswith(("/assets/", "/vendor/")) or path in ("/club.js", "/club.css"):
+                root = Path(HERE, "club").resolve()
+                target = (root / path.lstrip("/")).resolve()
+                if root not in target.parents or not target.is_file():
+                    return self.send(404, b"not found\n", "text/plain")
+                self.send(200, target.read_bytes(), mimetypes.guess_type(target.name)[0] or "application/octet-stream")
             else:
                 self.send(404, b"not found\n", "text/plain")
 
         def do_POST(self):
+            origin = self.headers.get("Origin")
+            expected = f"http://127.0.0.1:{self.server.server_address[1]}"
+            if origin and origin != expected:
+                return self.send(403, b"foreign origin\n", "text/plain")
             # /focus?agent=A: A's tab (its diplomat's session, else its node), selected
             m = re.match(r"/focus\?agent=([A-Za-z0-9_.-]+)$", self.path)
-            if not (m and net):
+            if not (m and net and m[1] not in (".", "..")):
                 return self.send(404, b"not found\n", "text/plain")
             a = m[1]
             s = read(os.path.join(net, ".cmux", a, "surface")).strip() or read(os.path.join(net, ".cmux", a, "node-surface")).strip()
@@ -440,6 +468,8 @@ def serve(source, port, net=None, on_ready=None, alive=None):
         httpd.serve_forever()
     except KeyboardInterrupt:
         pass
+    finally:
+        httpd.server_close()
 
 
 # --- commands ------------------------------------------------------------
@@ -467,6 +497,79 @@ def club_dir(net):
     d = os.path.join(net, ".cmux", "club")
     os.makedirs(d, exist_ok=True)
     return d
+
+
+def read_workers(net):
+    try:
+        data = json.loads(read(os.path.join(net, ".cmux", "club", "workers.json"), "{}"))
+        return data if isinstance(data, dict) else {}
+    except ValueError:
+        return {}
+
+
+def cmd_worker(args):
+    parser = argparse.ArgumentParser(prog="pantheon-club worker")
+    parser.add_argument("net")
+    parser.add_argument("name")
+    parser.add_argument("--parent")
+    parser.add_argument("--state", choices=["working", "idle", "needs_input", "limited", "completed", "ended"], default="working")
+    parser.add_argument("--task")
+    parser.add_argument("--remove", action="store_true")
+    opt = parser.parse_args(args)
+    net = net_arg([opt.net], "worker")
+    if not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,99}", opt.name):
+        die("worker names must be 1–100 letters, numbers, dots, underscores or hyphens")
+    if not opt.remove and (not opt.parent or opt.parent not in agents_of(net)
+                           or not os.path.isfile(os.path.join(net, ".cmux", opt.parent, "surface"))):
+        die("--parent must name a diplomat in this network")
+    if opt.name in agents_of(net):
+        die("a worker must have a different name from a network node")
+    d = Path(club_dir(net))
+    with (d / "workers.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        workers = read_workers(net)
+        if opt.remove:
+            workers.pop(opt.name, None)
+        else:
+            task = opt.task if opt.task is not None else workers.get(opt.name, {}).get("task", "")
+            workers[opt.name] = {"name": opt.name, "parent": opt.parent, "state": opt.state,
+                                 "task": task[:500], "updated": time.time()}
+        temporary = d / "workers.tmp"
+        temporary.write_text(json.dumps(workers))
+        temporary.replace(d / "workers.json")
+
+
+def install_worker_helpers(net):
+    for a in agents_of(net):
+        desk = Path(net, ".cmux", a, "desk")
+        if not desk.is_dir() or not Path(net, ".cmux", a, "surface").is_file():
+            continue
+        helper = desk / "club-worker"
+        helper.write_text("#!/bin/sh\nexec " + " ".join(map(shlex.quote, [sys.executable, os.path.realpath(__file__), "worker", net]))
+                          + ' "$@" --parent ' + shlex.quote(a) + "\n")
+        helper.chmod(0o755)
+        instructions = desk / "instructions.md"
+        marker = "\n<!-- pantheon-club workers -->\n"
+        text = read(instructions).split(marker)[0]
+        text += (marker + "\n## Club View cloud workers\n\n"
+                 "When you spawn a provider cloud task, register its task id immediately with "
+                 f"`{helper} TASK-ID --task \"what it is doing\"`. It appears as your matching puffle. "
+                 "Update it with `--state needs_input`, `--state limited`, or `--state completed` when its provider reports a change; "
+                 "remove it with `--remove` when dismissed. These calls only write view metadata and are allowed "
+                 "alongside your inbox work. Never register a task you have not actually spawned.\n")
+        instructions.write_text(text)
+        # Sessions may already have read instructions.md before attach runs.
+        # Show the helper on subsequent inbox waits, preserving the original
+        # wrapper and all of its environment settings and arguments.
+        inbox = desk / "pantheon-inbox"
+        base = desk / "pantheon-inbox.club-base"
+        if inbox.is_file() and not base.exists():
+            inbox.rename(base)
+            reminder = (f"Club View: register spawned cloud tasks with {helper} TASK-ID --task DESCRIPTION; "
+                        "update --state completed when done, or --remove when dismissed.")
+            inbox.write_text('#!/bin/sh\nif [ "${1:-}" = wait ]; then\n  printf \'%s\\n\' '
+                             + shlex.quote(reminder) + '\nfi\nexec sh ' + shlex.quote(str(base)) + ' "$@"\n')
+            inbox.chmod(0o755)
 
 
 def workspace_alive(net):
@@ -534,6 +637,12 @@ def left_pane(w):
     panes = (cm_json("--id-format", "both", "list-panes", "--workspace", w) or {}).get("panes", [])
     if not panes:
         die(f"cmux lists no panes in workspace {w}")
+    # Prefer the pane containing the plan, even when cmux omits geometry.
+    for pane in panes:
+        surfaces = cm_json("list-pane-surfaces", "--workspace", w, "--pane", pane["id"]) or {}
+        if any(s.get("title") == "plan.md" or s.get("title", "").endswith("/plan.md")
+               for s in surfaces.get("surfaces", [])):
+            return pane
     return min(panes, key=lambda p: (p.get("pixel_frame", {}).get("x", 0), p.get("pixel_frame", {}).get("y", 0)))
 
 
@@ -543,10 +652,15 @@ def cmd_attach(args):
     w = read(os.path.join(net, ".cmux", "workspace")).strip()
     if not (w and workspace_alive(net)):
         die(f"{net} isn't up in cmux: pantheon-club up {args[0]} (or pantheon-cmux up {args[0]}) first")
-    port = start_server(net)
-    url = f"http://127.0.0.1:{port}/"
     d = club_dir(net)
     pane = left_pane(w)
+    surfaces = (cm_json("list-pane-surfaces", "--workspace", w, "--pane", pane["id"]) or {}).get("surfaces", [])
+    plan = next((t for t in surfaces if t.get("title", "").endswith("plan.md")), None)
+    watchdog = next((t for t in surfaces if t.get("title") == "watchdog"), None)
+    if not (plan and watchdog):
+        die("Club View needs plan.md and watchdog in the left pane; start with pantheon-cmux's default plan layout")
+    port = start_server(net)
+    url = f"http://127.0.0.1:{port}/"
     old = read(os.path.join(d, "surface")).strip()
     if old and old in json.dumps(pane):
         # the tab is there from an earlier attach: pointed at the server, and first
@@ -555,20 +669,25 @@ def cmd_attach(args):
     else:
         out = cm("--id-format", "both", "new-surface", "--type", "browser", "--pane", pane["id"],
                  "--workspace", w, "--url", url, "--focus", "false", check=True)
-        m = re.search(r"\(([0-9A-F-]{36})\)", out or "")
+        m = re.search(r"\(([0-9A-Fa-f-]{36})\)", out or "")
         if not m:
             die(f"cmux made no club tab: {out}")
         s = m[1]
         with open(os.path.join(d, "surface"), "w") as f:
             f.write(f"{s}\n")
-        cm("rename-tab", "--workspace", w, "--surface", s, "club")
-    cm("reorder-surface", "--workspace", w, "--surface", s, "--index", "0", "--focus", "true")
+    cm("rename-tab", "--workspace", w, "--surface", s, "Club View", check=True)
+    cm("reorder-surface", "--workspace", w, "--surface", s, "--index", "0", "--focus", "true", check=True)
+    for index, tab in [(1, plan), (2, watchdog)]:
+        cm("reorder-surface", "--workspace", w, "--surface", tab["id"], "--index", str(index), check=True)
+    install_worker_helpers(net)
     say(f"the club is the first tab of {net}'s left half, before the plan and the watchdog ({url})")
 
 
 def cmd_up(args):
     net = net_arg(args, "up")
     pc = pantheon_cmux()
+    if "--layout" in args and args[args.index("--layout") + 1:][:1] == ["grid"]:
+        die("Club View needs Pantheon's plan layout; omit --layout grid")
     r = subprocess.run([pc, "up", *args])
     if r.returncode != 0:
         sys.exit(r.returncode)
@@ -612,7 +731,7 @@ def cmd_view(args):
 
 
 def main(argv):
-    cmds = {"up": cmd_up, "attach": cmd_attach, "down": cmd_down, "serve": cmd_serve, "state": cmd_state,
+    cmds = {"up": cmd_up, "attach": cmd_attach, "down": cmd_down, "serve": cmd_serve, "state": cmd_state, "worker": cmd_worker,
             "view": cmd_view}
     if not argv or argv[0] in ("help", "-h", "--help"):
         print(__doc__.strip())
