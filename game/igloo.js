@@ -3,6 +3,8 @@
 import Penguin from '/src/entities/Penguin.js';
 import PuffleView from '/src/entities/PuffleView.js';
 import Phaser from 'phaser';
+import { MovieRoom } from '/src/movie/movie.js';
+import { installMovement } from 'virtual:pantheon-movement';
 
 const appearances = [
   [6, 'orange'], [12, 'blue'], [8, 'purple'], [2, 'green'], [3, 'pink'],
@@ -185,6 +187,7 @@ class IglooClub {
 }
 
 export function installClub(RoomScene) {
+  installMovement(MovieRoom);
   const create = RoomScene.prototype.create;
   RoomScene.prototype.create = function (...args) {
     const result = create.apply(this, args);

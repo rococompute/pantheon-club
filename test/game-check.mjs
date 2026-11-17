@@ -54,8 +54,13 @@ try {
     throw new Error('Timed out: ' + label);
   };
   const click = async (x, y) => {
+    await call('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+    // Newly built native map zones enter Phaser's input list on its next
+    // frame. Move the pointer and let that frame run before pressing.
+    await evaluate('new Promise(requestAnimationFrame)');
     await call('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
     await call('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
+    await evaluate('new Promise(requestAnimationFrame)');
   };
   const worldClick = async (x, y) => {
     const p = await evaluate(`(()=>{const r=document.querySelector('canvas').getBoundingClientRect();return {x:r.left+${x}/760*r.width,y:r.top+${y}/480*r.height}})()`);
@@ -90,13 +95,38 @@ try {
   await worldClick(...zones[0]);
   await until("club.scene.currentRoom !== 'igloo' && club.penguins.size===0 && club.puffles.size===0", 'map travel clears agents');
   const destination = await evaluate('club.scene.currentRoom');
+  await evaluate("club.scene.changeRoom('town',380,350)");
+  await until("club.scene.currentRoom==='town' && club.scene._movieReady && club.scene.movie?._clubCollisionReady && !club.scene._pendingSpawn", 'Town collision before walking');
+  // This actual Town-wall target previously rounded the player's feet onto
+  // a blocked pixel, after which every click returned its starting point.
+  await worldClick(451, 100);
+  await until('Math.hypot(club.scene.localPlayer.x-380,club.scene.localPlayer.y-350)>20', 'approach the wall');
+  await until('!club.scene.localPlayer.isMoving', 'walk towards the Gift Shop wall');
+  assert(await evaluate('!club.scene.movie.hitBlock(club.scene.localPlayer.x,club.scene.localPlayer.y)'), 'wall-edge click ends outside collision');
+  await worldClick(380, 350);
+  await until('Math.hypot(club.scene.localPlayer.x-380,club.scene.localPlayer.y-350)<5', 'walk away from the wall');
+  // Recreate the old gap between visible artwork and a ready block mask.
+  await evaluate('window.townBlock=club.scene.movie._block;club.scene.movie._block=null;club.scene.movie._clubCollisionReady=false');
+  await worldClick(590, 190); await sleep(500);
+  assert(await evaluate('Math.hypot(club.scene.localPlayer.x-380,club.scene.localPlayer.y-350)<5'), 'early building click waits for collision');
+  await evaluate('club.scene.movie._block=window.townBlock;club.scene.movie._clubCollisionReady=true');
+  // A saved/already-stuck position must recover on the next floor click.
+  await evaluate('club.scene.localPlayer.moveTween?.stop();club.scene.localPlayer.setPosition(589,189);void 0');
+  assert(await evaluate('club.scene.movie.hitBlock(589,189)'), 'the reproduced missed-door point is inside the building');
+  await worldClick(380, 350);
+  await until('!club.scene.localPlayer.isMoving && !club.scene.movie.hitBlock(club.scene.localPlayer.x,club.scene.localPlayer.y)', 'escape an already blocked position');
+  // Existing walk-to-door / room triggers still work with ready collision.
+  await evaluate('club.scene.localPlayer.setPosition(380,350);club.scene.localPlayer.updateDepth();void 0');
+  const shop = await evaluate("(()=>{const b=club.scene._interactions.buttons.find(b=>b.path.endsWith('shop_btn')).bounds;return [(b[0]+b[2])/2,(b[1]+b[3])/2]})()");
+  await worldClick(...shop);
+  await until("club.scene.currentRoom==='shop' && club.scene._movieReady", 'enter the Gift Shop through its door');
   await evaluate("club.scene._showGameUnavailable('beans')");
   await until("club.scene._minigame?.isOpen && !!document.querySelector('iframe')?.contentDocument?.querySelector('iframe')?.contentDocument?.querySelector('.start-button')", 'upstream Bean Counters minigame');
   await evaluate("document.querySelector('iframe').contentDocument.querySelector('iframe').contentDocument.querySelector('.start-button').click()");
   await until("!!document.querySelector('iframe')?.contentDocument?.querySelector('iframe')?.contentDocument?.querySelector('.play-area .player')", 'Bean Counters starts playing');
   await evaluate('club.scene._closeMinigame()');
   await evaluate('club.scene._enterIgloo()');
-  await until("club.scene.currentRoom==='igloo' && club.penguins.size>0 && [...club.puffles.values()].every(p=>p.view._ready)", 'native home button restores agents');
+  await until("club.scene.currentRoom==='igloo' && club.penguins.size>0 && [...club.puffles.values()].every(p=>p.view._ready)", 'returning to the igloo restores agents');
   await evaluate("club.scene._iglooVisit='someone-else'");
   await until('club.penguins.size===0 && club.puffles.size===0', 'no agents in another igloo');
   await evaluate('club.scene._iglooVisit=null');

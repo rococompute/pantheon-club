@@ -24,6 +24,8 @@ Everything is hosted on **127.0.0.1**: the Vite client, WebSocket game server an
 
 The browser polls sanitized Pantheon status every two seconds. An unavailable market does not stop the game. The bridge does not serve node keys or source checkouts. The game server has no access to Pantheon’s agent controls; focusing a tab goes through the separate local bridge.
 
+Walking uses the original click-to-move controls. The pinned upstream client has no arrow-key walking handler; W, D and S are action shortcuts. The local adapter waits for collision and door triggers before allowing walking, validates rounded wall-edge destinations, and recovers a player already caught inside a building on the next floor click.
+
 ## cmux integration
 
 Requires macOS with cmux running, an existing Pantheon checkout and initialized network. Use Pantheon’s default `plan` layout.
@@ -68,15 +70,16 @@ It adds these instructions to each diplomat's desk and prints a short reminder o
 
 ## Implementation and checks
 
-`scripts/setup-game` pins upstream commit `db36a6d22fd745edc4300b4c562efbc862e1e06d`. Upstream files stay unchanged. `game/run.mjs` adds a Vite transform that installs `game/igloo.js` around the original room scene. `game/loopback.mjs` constrains the original server listener at module load. The only follower adaptation is an owner-coordinate offset for multiple puffles; rendering and animation remain native.
+`scripts/setup-game` pins upstream commit `db36a6d22fd745edc4300b4c562efbc862e1e06d`. Upstream files stay unchanged on disk. `game/run.mjs` installs `game/igloo.js` around the original room scene; `game/upstream.mjs` and `game/movement.mjs` apply the collision readiness, endpoint and recovery fixes at load time. `game/loopback.mjs` constrains the original server listener at module load. The only follower adaptation is an owner-coordinate offset for multiple puffles; rendering and animation remain native.
 
 ```sh
 python3 -m unittest discover -s test -v
+node --test test/movement-check.mjs
 # With a local native game already running (Chrome required):
 node test/game-check.mjs
 ```
 
-The browser check exercises native sprite loading, multiple same-color puffles, player movement through floor clicks, map travel, clearing and restoring actors, and exclusion from another player’s igloo. It checks browser exceptions and game network destinations. `CHROME` overrides the Chrome binary; `CLUB_SCREENSHOT` selects the screenshot path.
+The browser check exercises native sprite loading, multiple same-color puffles, player movement through floor clicks, map travel, clearing and restoring actors, and exclusion from another player’s igloo. It also checks Town/Gift Shop wall-edge clicks, clicks before collision is ready, recovery from the reproduced stuck position, and normal door entry. It checks browser exceptions and game network destinations. `CHROME` overrides the Chrome binary; `CLUB_SCREENSHOT` selects the screenshot path.
 
 The earlier standalone Coffee Shop prototype remains under `club/` and is available only through the explicit `pantheon-club legacy-view demo` command for comparison. Its export tool and `room-check.mjs`/`client-check.mjs` checks apply only to that prototype. The calculator helper in `scripts/dogfood-calculator` still prepares and launches a separate sample Pantheon market; attaching now uses the full game. Game installation is checked before `up` starts a market. The normal Python state API serves only status and tab-focus requests, not the prototype.
 

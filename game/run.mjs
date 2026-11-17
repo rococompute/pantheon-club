@@ -3,6 +3,7 @@ import { readFile, writeFile, mkdir, access, unlink } from 'node:fs/promises';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import net from 'node:net';
+import { transformRoomScene } from './upstream.mjs';
 
 const here = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const upstream = join(here, '.upstream/claude-penguin');
@@ -73,14 +74,19 @@ try {
     },
     plugins: [{
       name: 'pantheon-igloo',
-      resolveId(id) { if (id === 'virtual:pantheon-club') return '\0pantheon-club'; },
+      resolveId(id) {
+        if (id === 'virtual:pantheon-club') return '\0pantheon-club';
+        if (id === 'virtual:pantheon-movement') return '\0pantheon-movement';
+      },
       load(id) {
-        if (id === '\0pantheon-club') {
-          this.addWatchFile(join(here, 'game/igloo.js'));
-          return readFile(join(here, 'game/igloo.js'), 'utf8');
+        const file = id === '\0pantheon-club' ? 'igloo.js' : id === '\0pantheon-movement' ? 'movement.mjs' : null;
+        if (file) {
+          this.addWatchFile(join(here, 'game', file));
+          return readFile(join(here, 'game', file), 'utf8');
         }
       },
       transform(code, id) {
+        if (id.split('?')[0] === join(upstream, 'client/src/scenes/RoomScene.js')) return transformRoomScene(code);
         if (id.split('?')[0] !== join(upstream, 'client/src/main.js')) return;
         if (!code.includes('const config =')) throw new Error('Upstream entry point changed; review the Club adapter.');
         return "import {installClub} from 'virtual:pantheon-club';\n" + code.replace('const config =', 'installClub(RoomScene);\nconst config =');
