@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { MovieRoom } from '/src/movie/movie.js';
-import { parseSections } from 'virtual:pantheon-plan-sections';
+import { parseSections, formatPlanText } from 'virtual:pantheon-plan-sections';
 
 const DEPTH = 30000000, SS = 2.25, WIDTH = 264, HEIGHT = 300, TOP = 114;
 const FONT = 'Arial, sans-serif';
@@ -12,30 +12,30 @@ let serial = 0;
 function layout(sections, ctx, expanded) {
   const rows = [];
   let paragraph = [], code = false;
-  const inline = s => s.split(/(`[^`]+`)/).map(part => part.startsWith('`') ? part.slice(1, -1) :
-    part.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/(^|\s)_([^_\n]+)_(?=$|\s)/g, '$1$2')
-      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 ($2)')).join('');
-  function add(text, heading = false, fixed = false, disclosure = null) {
+  function add(text, heading = false, fixed = false, disclosure = null, prefix = '') {
     const font = `${heading ? 'bold 14' : fixed ? '11' : '12'}px ${fixed ? 'monospace' : FONT}`;
     ctx.font = font;
+    const formatted = fixed ? { text, strike: false } : formatPlanText(text);
+    const push = text => rows.push({ text, font, height: heading ? 21 : 17, heading, disclosure,
+      strike: formatted.strike, strikeStart: prefix && text.startsWith(prefix) ? ctx.measureText(prefix).width : 0 });
     let line = '';
-    for (let word of (fixed ? text : inline(text)).split(/(\s+)/)) {
+    for (let word of (prefix + formatted.text).split(/(\s+)/)) {
       if (!fixed && !line) word = word.trimStart();
       if (ctx.measureText(line + word).width <= WIDTH) { line += word; continue; }
       if (line && ctx.measureText(line + word).width > WIDTH) {
-        rows.push({ text: line.trimEnd(), font, height: heading ? 21 : 17, heading, disclosure }); line = '';
+        push(line.trimEnd()); line = '';
       }
       if (!fixed) word = word.trimStart();
       if (ctx.measureText(word).width <= WIDTH) { line = word; continue; }
       // Long paths, hashes and code also fit on the paper.
       for (const character of word) {
         if (line && ctx.measureText(line + character).width > WIDTH) {
-          rows.push({ text: line, font, height: heading ? 21 : 17, heading, disclosure }); line = '';
+          push(line); line = '';
         }
         if (line || character.trim() || fixed) line += character;
       }
     }
-    rows.push({ text: line, font, height: heading ? 21 : 17, heading, disclosure });
+    push(line);
   }
   const flush = () => { if (paragraph.length) { add(paragraph.join(' ')); paragraph = []; } };
   function textLine(line) {
@@ -53,7 +53,7 @@ function layout(sections, ctx, expanded) {
       if (node.type === 'text') { for (const line of node.lines) textLine(line); continue; }
       flush();
       const open = expanded.get(node.key) ?? node.defaultOpen;
-      add((open ? '▾ ' : '▸ ') + node.title, true, false, node.key);
+      add(node.title, true, false, node.key, open ? '▾ ' : '▸ ');
       rows.push({ height: 6 });
       if (open) render(node.children);
       flush(); rows.push({ height: 8 });
@@ -257,6 +257,11 @@ export class PlanPoster {
       const y = row.y - this.offset;
       if (row.text && y + row.height > 0 && y < HEIGHT) {
         ctx.font = row.font; ctx.fillStyle = row.disclosure ? '#16556d' : '#143647'; ctx.fillText(row.text, 0, y + 1);
+        if (row.strike) {
+          ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.moveTo(row.strikeStart, y + row.height * .45);
+          ctx.lineTo(ctx.measureText(row.text).width, y + row.height * .45); ctx.stroke();
+        }
       }
     }
     this.scene.textures.get(this.key).refresh();

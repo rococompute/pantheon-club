@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { parseSections } from '../game/plan-sections.mjs';
+import { readFile } from 'node:fs/promises';
+import { parseSections, formatPlanText } from '../game/plan-sections.mjs';
 
 test('plan disclosures preserve text, nesting and the open attribute', () => {
   const tree = parseSections(['## Plan', '', '<details open>', '<summary>Parent task</summary>',
@@ -41,4 +42,43 @@ test('multiline summaries and repeated titles remain independently expandable', 
   const tree = parseSections(source + '\n' + source);
   assert.equal(tree[0].title, 'A long task title');
   assert.notEqual(tree[0].key, tree[1].key);
+});
+
+test('goals keep disclosure choices across status changes, shortened titles and reordering', () => {
+  const goal = (title, body) => `<details>\n<summary>${title}</summary>\n\n${body}\n\n</details>`;
+  const body = 'Keep the full goal text, including &amp; and &lt;arguments&gt;.';
+  const key = status => parseSections('## Goals\n' + goal(status + ' Keep the full…', body))[1].key;
+  for (const status of ['🫘', '🌱', '🪴', '🌳']) assert.equal(key(status), key('🫘'));
+  const reordered = parseSections('## Market (a new leader)\n## Goals\n' +
+    goal('🫘 A new goal', 'A new goal.') + '\n' + goal('🌳 A different short title', body));
+  assert.equal(reordered.filter(n => n.type === 'details')[1].key, key('🫘'));
+  const dropped = parseSections('## Goals\n' + goal('<s>Dropped goal</s>', `~~${body}~~`))[1];
+  assert.equal(dropped.key, key('🫘'));
+});
+
+test('canvas text decodes escaped agent content once without turning it into markup', () => {
+  assert.deepEqual(formatPlanText('**Review** `a &lt; b` &amp; &lt;script&gt;'),
+    { text: 'Review a < b & <script>', strike: false });
+  assert.deepEqual(formatPlanText('&amp;lt;s&amp;gt; &quot;quoted&quot;'),
+    { text: '&lt;s&gt; "quoted"', strike: false });
+  assert.deepEqual(formatPlanText('&lt;s&gt;literal tags&lt;/s&gt;'),
+    { text: '<s>literal tags</s>', strike: false });
+  for (const text of ['<s>Dropped &amp; deferred</s>', '~~Dropped &amp; deferred~~']) {
+    assert.deepEqual(formatPlanText(text), { text: 'Dropped & deferred', strike: true });
+  }
+});
+
+test('demo matches the Market, Goals and Contributions disclosure format', async () => {
+  const source = await readFile(new URL('../game/demo-plan.md', import.meta.url), 'utf8');
+  assert(source.startsWith('## Market (codex leader)\n'));
+  assert(source.includes('## Goals\n') && source.includes('## Contributions\n'));
+  assert(source.includes('_🫘 open  🌱 working  🪴 progressing  🌳 done_'));
+  assert(source.includes('_🎫 pending  📈 accepted  📉 rejected  🪦 stale_'));
+  assert(!/## (?:Tasks|Bids|Plan:)/.test(source));
+  const folds = parseSections(source).filter(n => n.type === 'details');
+  assert.equal(folds.length, 10);
+  assert.equal(folds[0].title, 'Details');
+  assert(folds.every(n => !n.defaultOpen));
+  assert.deepEqual(folds.slice(1, 5).map(n => n.title.split(' ')[0]), ['🌳', '🪴', '🌱', '🫘']);
+  assert.deepEqual(folds.slice(6).map(n => n.title.split(' ')[0]), ['📈', '🎫', '📉', '🪦']);
 });

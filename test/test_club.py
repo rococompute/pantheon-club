@@ -143,9 +143,9 @@ class ClubTests(unittest.TestCase):
                 self.output = bytearray()
             def makefile(self, *_): return self.input
             def sendall(self, data): self.output.extend(data)
-        def request(path, method='GET', headers='', legacy=False):
+        def request(path, method='GET', headers='', legacy=False, demo=False):
             sock = Socket(f'{method} {path} HTTP/1.0\r\n{headers}\r\n'.encode())
-            m['make_handler'](self.state, str(self.net), legacy=legacy)(sock, ('127.0.0.1', 1234),
+            m['make_handler'](self.state, None if demo else str(self.net), legacy=legacy)(sock, ('127.0.0.1', 1234),
                 SimpleNamespace(server_address=('127.0.0.1',8767)))
             return bytes(sock.output)
         self.assertIn(b'200 OK',request('/assets/coffee.swl',legacy=True))
@@ -157,6 +157,7 @@ class ClubTests(unittest.TestCase):
         self.assertNotIn(b'NEVER SERVE',request('/state.json'))
         self.assertIn(b'403 Forbidden',request('/focus?agent=codex','POST','Origin: https://example.com\r\n'))
         self.assertIn(b'404 Not Found', request('/plan.md'))
+        self.assertTrue(request('/plan.md', demo=True).endswith((ROOT/'game/demo-plan.md').read_bytes()))
         plan = self.net/'.cmux/plan.md'
         plan.write_text('## Actual live plan\n\n✅ First task\n\n<details><summary>Review</summary>Evidence</details>\n')
         self.assertTrue(request('/plan.md').endswith(plan.read_bytes()))

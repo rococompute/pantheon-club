@@ -26,6 +26,13 @@ The browser polls sanitized Pantheon status every two seconds. An unavailable ma
 
 Walking uses the original click-to-move controls. The pinned upstream client has no arrow-key walking handler; W, D and S are action shortcuts. The local adapter waits for collision and door triggers before allowing walking, validates rounded wall-edge destinations, and recovers a player already caught inside a building on the next floor click.
 
+The paper follows Pantheon's current document: the Market summary and folded
+Details, **Goals** with collapsible full goal text and the 🫘/🌱/🪴/🌳 legend,
+then **Contributions** with 🎫 pending, 📈 accepted, 📉 rejected and 🪦 stale.
+An expanded goal stays expanded when its status icon changes. Escaped agent text
+is decoded as text, and dropped goals keep their strike-through. The local demo
+uses the same format; live and archived plans are displayed from their source.
+
 ## cmux integration
 
 Requires macOS with cmux running, an existing Pantheon checkout and initialized network. Use Pantheon’s default `plan` layout.
@@ -79,7 +86,7 @@ node --test test/movement-check.mjs test/plan-sections-check.mjs
 node test/game-check.mjs
 ```
 
-The browser check verifies the in-canvas poster, exact plan content, expanding/collapsing details, retained disclosure choices, wheel and keyboard scrolling and modal input isolation, then exercises native sprite loading, multiple same-color puffles, player movement through floor clicks, map travel, clearing and restoring actors, and exclusion from another player’s igloo. It also checks Town/Gift Shop wall-edge clicks, clicks before collision is ready, recovery from the reproduced stuck position, and normal door entry. It checks browser exceptions and game network destinations. `CHROME` overrides the Chrome binary; `CLUB_SCREENSHOT` selects the screenshot path.
+The browser check verifies the in-canvas poster, exact plan content, expanding/collapsing details and goals, retained goal expansion through live status changes, escaped text, dropped-goal formatting, wheel and keyboard scrolling and modal input isolation, then exercises native sprite loading, multiple same-color puffles, player movement through floor clicks, map travel, clearing and restoring actors, and exclusion from another player’s igloo. It also checks Town/Gift Shop wall-edge clicks, clicks before collision is ready, recovery from the reproduced stuck position, and normal door entry. It checks browser exceptions and game network destinations. `CHROME` overrides the Chrome binary; `CLUB_SCREENSHOT` selects the screenshot path.
 
 The earlier standalone Coffee Shop prototype remains under `club/` and is available only through the explicit `pantheon-club legacy-view demo` command for comparison. Its export tool and `room-check.mjs`/`client-check.mjs` checks apply only to that prototype. The calculator helper in `scripts/dogfood-calculator` still prepares and launches a separate sample Pantheon market; attaching now uses the full game. Game installation is checked before `up` starts a market. The normal Python API serves status, the fixed market plan and the existing tab-focus endpoint, not the prototype.
 

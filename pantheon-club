@@ -431,24 +431,7 @@ def make_handler(source, net=None, legacy=False):
                             return self.send(200, candidate.read_bytes(), "text/markdown; charset=utf-8")
                     self.send(404, b"The market has not written plan.md yet.\n", "text/plain; charset=utf-8")
                 else:
-                    self.send(200, ("## Demo market\n\nThis is a sample plan for the local game demo.\n\n"
-                                   "## Plan: calculator\n\n"
-                                   "✅ Define calculator commands and their inputs.\n\n"
-                                   "✅ Add subtraction with boundary cases.\n\n"
-                                   "⏳ Implement multiplication and division.\n\n"
-                                   "🟡 Check malformed inputs and division by zero.\n\n"
-                                   "## Checks\n\nRun the example's checks before accepting a bid. "
-                                   "Review the implementation, test evidence and remaining work.\n\n"
-                                   "## Next steps\n\nDocument the commands and their expected output. "
-                                   "Keep changes small enough for the other agents to review.\n\n"
-                                   "## Bids\n\n<details>\n<summary>🟢 Subtraction implementation</summary>\n\n"
-                                   "_bid 1 by codex, merged_\n\n"
-                                   "Added subtraction and boundary cases. The calculator accepts positive and negative operands, "
-                                   "reports malformed input, and keeps the existing addition behavior. "
-                                   "The focused checks and the complete example checks passed.\n\n"
-                                   "</details>\n\n<details>\n<summary>⚪ Multiplication implementation</summary>\n\n"
-                                   "_bid 2 by claude, pending_\n\nReview the multiplication implementation and test evidence.\n\n"
-                                   "</details>\n").encode(),
+                    self.send(200, Path(HERE, "game/demo-plan.md").read_bytes(),
                               "text/markdown; charset=utf-8")
             elif legacy and (path.startswith(("/assets/", "/vendor/")) or path in ("/club.js", "/club.css")):
                 root = Path(HERE, "club").resolve()

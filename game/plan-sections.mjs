@@ -1,5 +1,20 @@
 // Parse only the plan's disclosure structure. Everything else remains text
 // for the canvas renderer, including HTML-looking examples in code fences.
+
+// The Markdown producer escapes agent-written text. Decode once, as text,
+// after recognizing our formatting: escaped tags must never become markup.
+export function formatPlanText(source) {
+  let text = source.trim();
+  const strike = /^(?:<s>[\s\S]*<\/s>|~~[\s\S]*~~)$/.test(text);
+  if (strike) text = text.startsWith('<s>') ? text.slice(3, -4) : text.slice(2, -2);
+  text = text.split(/(`[^`]+`)/).map(part => part.startsWith('`') ? part.slice(1, -1) :
+    part.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/(^|\s)_([^_\n]+)_(?=$|\s)/g, '$1$2')
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 ($2)')).join('');
+  const entities = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", '#39': "'" };
+  text = text.replace(/&(amp|lt|gt|quot|apos|#39);/g, (_, name) => entities[name]);
+  return { text, strike };
+}
+
 export function parseSections(source) {
   const root = { children: [] }, stack = [root];
   let fence = null, summary = null;
@@ -38,14 +53,22 @@ export function parseSections(source) {
     append(line);
   }
   function identify(parent, prefix = '') {
-    const counts = new Map();
+    const counts = new Map(); let section = '';
     for (const node of parent.children) {
+      if (node.type === 'text') {
+        for (const line of node.lines) {
+          const heading = line.match(/^##\s+(.+?)\s*$/);
+          if (heading) section = heading[1];
+        }
+      }
       if (node.type !== 'details') continue;
       // Bid titles/statuses can change while a reader has them open. The
-      // bid id in the file remains stable; generic sections use their title.
+      // bid id remains stable. Goals keep their full text when their icon or
+      // shortened summary changes; generic sections use their title.
       const body = node.children.filter(c => c.type === 'text').flatMap(c => c.lines).join('\n');
       const bid = body.match(/^_?bid\s+(\d+)\b/im);
-      const identity = bid ? `bid:${bid[1]}` : `summary:${node.title}`;
+      const goal = section === 'Goals' && body.trim() ? formatPlanText(body).text : null;
+      const identity = goal !== null ? `goal:${goal}` : bid ? `bid:${bid[1]}` : `summary:${node.title}`;
       const occurrence = (counts.get(identity) || 0) + 1;
       counts.set(identity, occurrence);
       node.key = `${prefix}${identity}:${occurrence}`;

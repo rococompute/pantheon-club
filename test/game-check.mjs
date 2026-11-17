@@ -89,6 +89,7 @@ try {
   assert(await evaluate('[...club.penguins.values()].every(p=>!p.entity.input)'), 'agents no longer have click cards');
   await worldClick(724, 43);
   await until('club.poster.isOpen && club.poster.raw!==null', 'poster opens the market plan');
+  await evaluate('clearInterval(club.poster.timer)');
   assert.equal(await evaluate('club.poster.raw'), await (await fetch(new URL('/plan.md', url))).text(), 'the paper contains the actual plan.md');
   assert(await evaluate('club.poster.document.disclosures.length>0'), 'plan details have disclosure headers');
   const closedHeight = await evaluate('club.poster.document.height');
@@ -107,6 +108,35 @@ try {
   await clickFold();
   await until('club.poster.expanded.get(window.planFold)===false', 'collapse the disclosure');
   assert.equal(await evaluate('club.poster.document.height'), closedHeight, 'collapsed evidence no longer occupies space');
+  if (await evaluate('club.poster.sections.some(n=>n.key?.startsWith("goal:"))')) {
+    await evaluate('window.planFold=club.poster.sections.find(n=>n.key?.startsWith("goal:")).key;void 0');
+    await clickFold();
+    assert.equal(await evaluate('club.poster.expanded.get(window.planFold)'), true, 'goal expands inside the paper');
+    await evaluate(`(()=>{
+      window.originalPlan=club.poster.raw;window.savedPlanFetch=window.fetch;
+      window.fetch=(input,...args)=>input==='/plan.md' ? Promise.resolve(new Response(
+        window.originalPlan.replace(/(<summary>)[🫘🌱🪴🌳]/u,'$1🌱'))) : window.savedPlanFetch(input,...args);
+    })()`);
+    try {
+      await evaluate('club.poster.refresh()');
+      assert.equal(await evaluate('club.poster.expanded.get(window.planFold)'), true, 'live goal status changes preserve expansion');
+      assert(await evaluate('club.poster.sections.some(n=>n.key===window.planFold)'), 'goal identity survives its changed status icon');
+    } finally {
+      await evaluate('window.fetch=window.savedPlanFetch;club.poster.refresh()');
+    }
+    await clickFold();
+    assert.equal(await evaluate('club.poster.expanded.get(window.planFold)'), false);
+    assert(await evaluate('club.poster.document.rows.filter(r=>r.strike).every(r=>!r.text.includes("<s>")&&!r.text.includes("~~"))'), 'dropped goals use canvas strike-through');
+    const escapedBid = await evaluate('club.poster.sections.find(n=>n.children?.some(c=>c.lines?.some(l=>l.includes("&lt;operands&gt;"))))?.key');
+    if (escapedBid) {
+      await evaluate(`club.poster.toggleSection(${JSON.stringify(escapedBid)})`);
+      assert(await evaluate('club.poster.document.rows.map(r=>r.text).join(" ").includes("positive & negative <operands>")'), 'escaped agent text is readable');
+      await evaluate(`club.poster.toggleSection(${JSON.stringify(escapedBid)})`);
+    }
+    await evaluate('club.poster.scrollTo(club.poster.document.rows.find(r=>r.text==="Goals").y)');
+    const goalsScreenshot = await call('Page.captureScreenshot', {format:'png'});
+    await writeFile(join(tmpdir(), 'pantheon-plan-goals.png'), Buffer.from(goalsScreenshot.data, 'base64'));
+  }
   await evaluate('club.poster.scrollTo(0)');
   assert(await evaluate('club.poster.maxOffset > 0'), 'long plans scroll');
   const scrollPoint = await evaluate("(()=>{const r=document.querySelector('canvas').getBoundingClientRect();return {x:r.left+380/760*r.width,y:r.top+250/480*r.height}})()");
