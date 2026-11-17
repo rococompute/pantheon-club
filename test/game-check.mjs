@@ -95,7 +95,7 @@ try {
   await evaluate("document.querySelector('iframe').contentDocument.querySelector('iframe').contentDocument.querySelector('.start-button').click()");
   await until("!!document.querySelector('iframe')?.contentDocument?.querySelector('iframe')?.contentDocument?.querySelector('.play-area .player')", 'Bean Counters starts playing');
   await evaluate('club.scene._closeMinigame()');
-  await evaluate("document.querySelector('[data-home]').click()");
+  await evaluate('club.scene._enterIgloo()');
   await until("club.scene.currentRoom==='igloo' && club.penguins.size>0 && [...club.puffles.values()].every(p=>p.view._ready)", 'native home button restores agents');
   await evaluate("club.scene._iglooVisit='someone-else'");
   await until('club.penguins.size===0 && club.puffles.size===0', 'no agents in another igloo');

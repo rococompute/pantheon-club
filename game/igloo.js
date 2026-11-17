@@ -38,7 +38,7 @@ class IglooClub {
       #pantheon-club-panel aside{margin-top:6px;padding:12px;background:#f7fcfff5;border:1px solid #587584;border-radius:10px;max-width:270px;max-height:60vh;overflow:auto;box-shadow:0 3px 14px #0003}
       #pantheon-club-panel p{margin:7px 0;white-space:pre-wrap;overflow-wrap:anywhere}
       #pantheon-club-panel h3{margin:0 0 6px} #pantheon-club-panel .club-roster{display:flex;gap:4px;flex-wrap:wrap}
-    </style><button type="button" data-open>Agents</button> <button type="button" data-home>My igloo</button>
+    </style><button type="button" data-open>Agents</button>
     <aside hidden><button type="button" data-close style="float:right" aria-label="Close agent card">×</button>
     <h3>Pantheon</h3><p data-summary>Connecting to the local market…</p><div class="club-roster"></div>
     <h3 data-name></h3><p data-status></p><p data-task></p><button type="button" data-focus hidden>Open agent tab</button></aside>`;
@@ -46,10 +46,6 @@ class IglooClub {
     const aside = this.panel.querySelector('aside');
     this.panel.querySelector('[data-open]').onclick = () => { aside.hidden = !aside.hidden; };
     this.panel.querySelector('[data-close]').onclick = () => { aside.hidden = true; };
-    this.panel.querySelector('[data-home]').onclick = () => {
-      if (this.scene.currentRoom === 'igloo' && this.scene._iglooVisit) this.scene._leaveIgloo();
-      this.scene._enterIgloo();
-    };
     this.panel.querySelector('[data-focus]').onclick = async () => {
       const agent = this.state?.agents.find(a => a.name === this.selected);
       if (!agent) return;
