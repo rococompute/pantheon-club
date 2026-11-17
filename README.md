@@ -66,6 +66,29 @@ It adds these instructions to each diplomat's desk and prints a short reminder o
 
 ## Preview and checks
 
+To try the real calculator example from a normal terminal with cmux running:
+
+```sh
+./scripts/dogfood-calculator
+```
+
+This initializes a separate four-node network in `.dogfood/calculator/`, checks the
+calculator baseline, then starts the market with the subtraction and multiplication
+goals and attaches Club View. The default uses scripted bidders and no model calls;
+these nodes appear as independent puffles. To exercise diplomat penguins with your
+installed provider CLIs, set `CLUB_DIPLOMATS="claude codex"` before the command.
+The provider CLIs use Pantheon's existing unattended-session settings.
+
+`./scripts/dogfood-calculator --prepare` only prepares and checks the example;
+`./scripts/dogfood-calculator --stop` stops its workspace. A final directory argument
+selects a separate run directory. Runs and generated keys stay in the ignored
+`.dogfood/` directory, outside the committed source. The market uses ports 43600–43603;
+set `CLUB_BASE_PORT` before preparing a new network if those are occupied.
+
+The initial attempted run in this coding environment passed baseline and genesis
+checks but could not start: the sandbox denied the cmux Unix socket and localhost
+listeners. This is not a completed live cmux or browser validation.
+
 ```sh
 ./pantheon-club view demo --port 8767        # http://127.0.0.1:8767
 ./pantheon-club view ~/.pantheon/runs/RUN   # inspect an archived run

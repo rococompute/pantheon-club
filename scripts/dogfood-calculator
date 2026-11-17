@@ -1,0 +1,52 @@
+#!/bin/sh
+# An isolated calculator market for trying Club View in a normal cmux session.
+set -eu
+root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+pantheon_root=${PANTHEON_ROOT:-$root/../pantheon}
+mode=run
+case ${1:-} in
+  --prepare) mode=prepare; shift ;;
+  --stop) mode=stop; shift ;;
+  --help|-h)
+    echo 'usage: scripts/dogfood-calculator [--prepare|--stop] [DIR]'
+    echo 'Settings: PANTHEON_ROOT, PANTHEON, CMUX, CLUB_DIPLOMATS (space-separated), CLUB_BASE_PORT.'
+    exit 0 ;;
+esac
+if [ "$#" -gt 1 ]; then echo 'expected at most one output directory' >&2; exit 2; fi
+dogfood_dir=${1:-$root/.dogfood/calculator}
+mkdir -p "$dogfood_dir"
+dogfood_dir=$(CDPATH= cd -- "$dogfood_dir" && pwd)
+export PANTHEON=${PANTHEON:-$pantheon_root/main.exe}
+export PANTHEON_CMUX=${PANTHEON_CMUX:-$pantheon_root/integrations/cmux/pantheon-cmux}
+export PANTHEON_RUNS=$dogfood_dir/runs
+net=$dogfood_dir/net
+if [ "$mode" = stop ]; then exec "$root/pantheon-club" down "$net"; fi
+if [ ! -x "$PANTHEON" ]; then echo "no Pantheon binary at $PANTHEON" >&2; exit 1; fi
+if [ ! -d "$net" ]; then
+  if [ -e "$dogfood_dir/calc" ]; then
+    echo "existing calculator without a network in $dogfood_dir; choose a new directory" >&2; exit 1
+  fi
+  mkdir "$dogfood_dir/calc"
+  cp -R "$pantheon_root/examples/calc/." "$dogfood_dir/calc/"
+  # Scripted bidders follow the concrete goal lines used by Pantheon's quickstart.
+  printf '%s\n' '- add a sub command' '- add a mul command' > "$dogfood_dir/goal.txt"
+  git -C "$dogfood_dir/calc" init -q
+  git -C "$dogfood_dir/calc" add -A
+  git -C "$dogfood_dir/calc" -c user.name='Club View dogfood' -c user.email=dogfood@example.invalid commit -qm 'Calculator baseline'
+  "$PANTHEON" init "$net" --repo "calc=$dogfood_dir/calc" --base-port "${CLUB_BASE_PORT:-43600}" \
+    --block-ms 300 --param term_blocks=40 --param max_merges=1
+fi
+# The real example's baseline must pass before starting any nodes.
+(cd "$dogfood_dir/calc" && sh test.sh)
+printf 'Calculator market: %s\n' "$net"
+if [ "$mode" = prepare ]; then
+  printf 'Prepared. Start with: %s/scripts/dogfood-calculator %s\n' "$root" "$dogfood_dir"
+  exit 0
+fi
+# The scripted mode uses no model calls. Set CLUB_DIPLOMATS to run real sessions.
+set -- "$net"
+if [ -n "${CLUB_DIPLOMATS:-}" ]; then set -- "$@" --diplomats "$CLUB_DIPLOMATS"; fi
+"$root/pantheon-club" up "$@" -- \
+  --goal "$dogfood_dir/goal.txt" --bid-window 8 --deny test.sh --deny tests/test_add.sh
+printf '\nInspect: %s status %s/claude\n' "$PANTHEON" "$net"
+printf 'Stop: %s/scripts/dogfood-calculator --stop %s\n' "$root" "$dogfood_dir"
