@@ -1,0 +1,16 @@
+#!/bin/sh
+# Install the actual upstream game, without its tracked node_modules or SWF sources.
+set -eu
+here=$(cd "$(dirname "$0")/.." && pwd)
+upstream=$here/.upstream/claude-penguin
+commit=db36a6d22fd745edc4300b4c562efbc862e1e06d
+node -e 'if (+process.versions.node.split(".")[0] < 24) throw Error("Node 24+ is required")'
+if [ ! -d "$upstream/.git" ]; then
+  git clone --filter=blob:none --no-checkout https://github.com/gabixou/claude-penguin.git "$upstream"
+fi
+git -C "$upstream" sparse-checkout init --cone
+git -C "$upstream" sparse-checkout set client/src client/public server/src
+git -C "$upstream" checkout --detach "$commit"
+npm ci --prefix "$upstream/client" --ignore-scripts
+npm ci --prefix "$upstream/server" --ignore-scripts
+printf 'Installed Claude Penguin %s for local personal use.\n' "$commit"

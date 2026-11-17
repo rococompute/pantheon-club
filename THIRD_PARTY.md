@@ -2,6 +2,10 @@
 
 The visual source is [Claude Penguin by Arenovisk (gabixou)](https://github.com/gabixou/claude-penguin), pinned at commit `db36a6d22fd745edc4300b4c562efbc862e1e06d`. Its README identifies it as a non-commercial fan project, credits GoPenguin and the community, and reserves Club Penguin assets, names, and trademarks to their respective owners. It does not provide a general-purpose license grant. This repository does not claim ownership or relicense those materials.
 
+The default Club View now runs the full upstream Phaser/Vite client and Node/SQLite server. `scripts/setup-game` fetches the pinned checkout and installs its lockfile dependencies into ignored `.upstream/claude-penguin/`; those files are not republished by this repository. Upstream sources stay unchanged on disk. The local adapter installs native penguin and puffle entities inside the player's igloo and constrains the game server to loopback. No public game server or public hosting is used.
+
+The copied files described below belong to the preserved standalone Coffee Shop prototype (`pantheon-club view`), not the new default game.
+
 The following files are copied unchanged. [provenance.json](club/assets/provenance.json) records the exact upstream paths and Git blob hashes so the copies can be audited.
 
 | Local file | Upstream source |

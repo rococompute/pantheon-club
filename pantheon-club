@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """pantheon-club: a club view of a Pantheon network, as the first tab of its cmux workspace.
 
-The market is drawn as a hall: each diplomat is a penguin in its agent's
-colour, working at its desk, waiting at the bell for you, asleep on the bench
-at a usage limit, or wandering between requests; the term's leader wears the
-laurel at the rostrum. Every other node (one without a diplomat: a cloud agent
-a diplomat started, or the node of the person browsing) is a puffer, in the
-colour of the diplomat it came from, floating after it; a puffer that came from
-no diplomat (yours) is pearl, and drifts about the hall on its own.
+The actual Claude Penguin game runs locally. Market participants appear as
+native penguins and cloud workers as matching puffles in your own igloo.
+Your player can travel around the original game; agents stay in the igloo.
+Run scripts/setup-game once first (Node 24+, Python 3.10+, Git, npm).
+
+  pantheon-club game NET|RECORD|demo [--port N]
+                        full upstream game, local only (default port 8767);
+                        Ctrl-C stops all three local services
 
   pantheon-club up NET [PANTHEON-CMUX UP ARGS...]
                         pantheon-cmux up NET with these arguments, then attach
@@ -17,13 +18,12 @@ no diplomat (yours) is pearl, and drifts about the hall on its own.
   pantheon-club down NET
                         stop the club's server, then pantheon-cmux down NET
   pantheon-club serve NET [--port N]
-                        the server alone, in the foreground (attach starts it in
-                        the background); it stops once NET's workspace is gone
+                        legacy standalone Coffee Shop server; stops once NET's
+                        workspace is gone
   pantheon-club state NET|RECORD
                         the state the view draws, as JSON
   pantheon-club view RECORD|demo [--port N]
-                        a run's record (~/.pantheon/runs/NAME), or a demo that
-                        changes as you watch, served for any browser; no cmux
+                        legacy standalone Coffee Shop prototype; no cmux
   pantheon-club worker NET NAME --parent DIPLOMAT [--state STATE] [--task TEXT]
                         register or update a spawned provider cloud task as a
                         puffle; --remove dismisses it. attach also installs a
@@ -39,8 +39,8 @@ Settings, from the environment:
                  beside this checkout, else beside $PANTHEON)
   CMUX           the cmux CLI (default: cmux on PATH, else the one inside cmux.app)
 
-What it keeps lives in NET/.cmux/club: the server's port, pid and log, and the
-club tab's id.
+Attached game metadata, logs, player database and tab id live in NET/.cmux/club.
+Standalone player data lives in this checkout's .local-game directory.
 """
 
 import json
@@ -635,6 +635,37 @@ def start_server(net):
     die(f"the club's server didn't start: read {os.path.join(d, 'server.log')}")
 
 
+def start_game(net):
+    """Run the complete upstream game, keeping its player database per market."""
+    d = club_dir(net)
+    metadata = os.path.join(d, "game.json")
+    try:
+        info = json.loads(read(metadata))
+        os.kill(info["pid"], 0)
+        with socket.create_connection(("127.0.0.1", info["port"]), timeout=1):
+            return info["url"]
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    if not os.path.isdir(os.path.join(HERE, ".upstream", "claude-penguin", "client", "node_modules")):
+        die("run scripts/setup-game first to install the local upstream game")
+    with open(os.path.join(d, "game.log"), "a") as log:
+        process = subprocess.Popen(["node", os.path.join(HERE, "game", "run.mjs"), net,
+                                    "--port", str(free_port()), "--metadata", metadata],
+                                   stdout=log, stderr=log, stdin=subprocess.DEVNULL, start_new_session=True)
+    for _ in range(150):
+        try:
+            info = json.loads(read(metadata))
+            if info["pid"] == process.pid:
+                return info["url"]
+        except (ValueError, KeyError):
+            pass
+        if process.poll() is not None:
+            break
+        time.sleep(0.1)
+    process.terminate()
+    die(f"the local game didn't start: read {os.path.join(d, 'game.log')}")
+
+
 def left_pane(w):
     """The left half's pane: the leftmost one (the plan's, in pantheon-cmux's plan layout)."""
     panes = (cm_json("--id-format", "both", "list-panes", "--workspace", w) or {}).get("panes", [])
@@ -662,8 +693,7 @@ def cmd_attach(args):
     watchdog = next((t for t in surfaces if t.get("title") == "watchdog"), None)
     if not (plan and watchdog):
         die("Club View needs plan.md and watchdog in the left pane; start with pantheon-cmux's default plan layout")
-    port = start_server(net)
-    url = f"http://127.0.0.1:{port}/"
+    url = start_game(net)
     old = read(os.path.join(d, "surface")).strip()
     if old and old in json.dumps(pane):
         # the tab is there from an earlier attach: pointed at the server, and first
@@ -700,6 +730,11 @@ def cmd_up(args):
 
 def cmd_down(args):
     net = net_arg(args, "down")
+    try:
+        info = json.loads(read(os.path.join(net, ".cmux", "club", "game.json")))
+        os.kill(info["pid"], signal.SIGTERM)
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
     pid = read(os.path.join(net, ".cmux", "club", "pid")).strip()
     if pid.isdigit():
         try:
@@ -707,7 +742,7 @@ def cmd_down(args):
             say("stopped the club's server")
         except OSError:
             pass
-    for f in ("pid", "port", "surface"):
+    for f in ("pid", "port", "surface", "game.json"):
         try:
             os.remove(os.path.join(net, ".cmux", "club", f))
         except OSError:
@@ -734,9 +769,27 @@ def cmd_view(args):
     serve(source, port_arg(args), on_ready=lambda p: say(f"open http://127.0.0.1:{p}/ (ctrl-c stops it)"))
 
 
+def cmd_api(args):
+    """Internal loopback state bridge for the native game."""
+    if args and args[0] == "demo":
+        source, net = Demo().state, None
+    else:
+        net = net_arg(args, "api")
+        build_state(net)  # validate before listening
+        source = lambda: build_state(net, live=os.path.isfile(os.path.join(net, ".cmux", "workspace")))
+    serve(source, port_arg(args), net=net)
+
+
+def cmd_game(args):
+    args = list(args) or ["demo"]
+    if args[0] != "demo":
+        args[0] = net_arg(args, "game")
+    os.execvp("node", ["node", os.path.join(HERE, "game", "run.mjs"), *args])
+
+
 def main(argv):
     cmds = {"up": cmd_up, "attach": cmd_attach, "down": cmd_down, "serve": cmd_serve, "state": cmd_state, "worker": cmd_worker,
-            "view": cmd_view}
+            "view": cmd_view, "game": cmd_game, "api": cmd_api}
     if not argv or argv[0] in ("help", "-h", "--help"):
         print(__doc__.strip())
         return

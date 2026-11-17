@@ -95,12 +95,14 @@ class ClubTests(unittest.TestCase):
             return 'OK'
         def cm_json(*args):
             return {'panes':[{'id':'left-pane','surface_ids':[t['id'] for t in tabs]}]} if 'list-panes' in args else {'surfaces':tabs}
-        with patch.dict(g,need_cmux=lambda:None,workspace_alive=lambda _:True,start_server=lambda _:8767,cm=cm,cm_json=cm_json):
+        game_url = 'http://127.0.0.1:8767/?room=igloo&penguin=You'
+        with patch.dict(g,need_cmux=lambda:None,workspace_alive=lambda _:True,start_game=lambda _:game_url,cm=cm,cm_json=cm_json):
             with contextlib.redirect_stdout(io.StringIO()):
                 m['cmd_attach']([str(self.net)]);m['cmd_attach']([str(self.net)])
         self.assertEqual([t['title'] for t in tabs],['Club View','plan.md','watchdog'])
         self.assertEqual(sum('new-surface' in c for c in calls),1)
         self.assertTrue(any(c[0]=='browser' and 'navigate' in c for c in calls))
+        self.assertTrue(any('--url' in c and game_url in c for c in calls))
 
     def test_record_has_diplomats_without_cmux(self):
         import shutil
