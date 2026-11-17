@@ -4,3 +4,9 @@ __pycache__/
 preview.html
 
 .dogfood/
+
+node_modules/
+
+.upstream/
+
+.local-game/

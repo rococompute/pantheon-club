@@ -13,21 +13,6 @@
       "git_blob_sha": "cc0506fa830e8ed9ab8ac43d7cf88c80a9d9ee83"
     },
     {
-      "local": "club/assets/penguin-atlas.png",
-      "source": "client/public/assets/penguin-atlas.png",
-      "git_blob_sha": "39b7becc231941497fbe678a9d5baacd08388a47"
-    },
-    {
-      "local": "club/assets/penguin-body.png",
-      "source": "client/public/assets/penguin-body.png",
-      "git_blob_sha": "47855e66cfebba423e8aab53016540b03529a7ce"
-    },
-    {
-      "local": "club/assets/penguin-frames.json",
-      "source": "client/public/assets/penguin-frames.json",
-      "git_blob_sha": "f8b6ba7a33b370276a0e14c890daa37c1fe477e2"
-    },
-    {
       "local": "club/assets/puffle.pack",
       "source": "client/public/assets/puffle-icons/blue/chars/chunk-0-cf65db61.pack",
       "git_blob_sha": "d81828a16a65a2c6ea86c8aa2c6895cc72d04a92"
@@ -46,6 +31,131 @@
       "local": "club/vendor/swlCanvas.js",
       "source": "client/src/swl/swlCanvas.js",
       "git_blob_sha": "de9ecdfeb68e1bbc408d8a161db6daea56a5c545"
+    },
+    {
+      "local": "club/vendor/movie/movie.js",
+      "source": "client/src/movie/movie.js",
+      "git_blob_sha": "9aa0aa43fc85dd791c7a3a4feabfe1e606546f93"
+    },
+    {
+      "local": "club/vendor/movie/clip.js",
+      "source": "client/src/movie/clip.js",
+      "git_blob_sha": "c8b9a17082fbf01747ca9aa368d4b56558f1ad6c"
+    },
+    {
+      "local": "club/vendor/workers/tint.worker.js",
+      "source": "client/src/workers/tint.worker.js",
+      "git_blob_sha": "eb68bbb0e63f37199009dcaf6e9c2a75b3f0aae2"
+    },
+    {
+      "local": "club/vendor/workers/manifest.worker.js",
+      "source": "client/src/workers/manifest.worker.js",
+      "git_blob_sha": "7e21458e5e60fe62f015bf7d8d20d4805ca2d5b3"
+    },
+    {
+      "local": "club/assets/penguin/timelines.json",
+      "source": "client/public/assets/movies/penguin/timelines.json",
+      "git_blob_sha": "695c805f096d32e71cf4a49e3dbd04a10235f2b5"
+    },
+    {
+      "local": "club/assets/penguin/chars/chunk-0-6ae28336.pack",
+      "source": "client/public/assets/movies/penguin/chars/chunk-0-6ae28336.pack",
+      "git_blob_sha": "c799da3fadadf4fef895b9802baa664b740b4596"
+    },
+    {
+      "local": "club/assets/penguin/chars/chunk-1-a8ec97e5.pack",
+      "source": "client/public/assets/movies/penguin/chars/chunk-1-a8ec97e5.pack",
+      "git_blob_sha": "90b4e291ef09bcee8e92173866fcf2534cecc9e1"
+    },
+    {
+      "local": "club/assets/penguin/chars/chunk-10-dfda59e9.pack",
+      "source": "client/public/assets/movies/penguin/chars/chunk-10-dfda59e9.pack",
+      "git_blob_sha": "63c382115f6d84e2870c9aeecb3f1226bf96971e"
+    },
+    {
+      "local": "club/assets/penguin/chars/chunk-11-0e9562f9.pack",
+      "source": "client/public/assets/movies/penguin/chars/chunk-11-0e9562f9.pack",
+      "git_blob_sha": "c146b3bd545943876c0c53032580a28bcf614268"
+    },
+    {
+      "local": "club/assets/penguin/chars/chunk-12-d5d6f8c8.pack",
+      "source": "client/public/assets/movies/penguin/chars/chunk-12-d5d6f8c8.pack",
+      "git_blob_sha": "b106e018ea768c6aa7bbd236230bb53c716c50b5"
+    },
+    {
+      "local": "club/assets/penguin/chars/chunk-13-277510b9.pack",
+      "source": "client/public/assets/movies/penguin/chars/chunk-13-277510b9.pack",
+      "git_blob_sha": "5a15c5c6073fc32fbf49b0edc5fd18f2da0522e1"
+    },
+    {
+      "local": "club/assets/penguin/chars/chunk-14-fc594751.pack",
+      "source": "client/public/assets/movies/penguin/chars/chunk-14-fc594751.pack",
+      "git_blob_sha": "f72ab7d4d4acc6c7a07a7ef6ce5c9e61923c200c"
+    },
+    {
+      "local": "club/assets/penguin/chars/chunk-15-98f0319b.pack",
+      "source": "client/public/assets/movies/penguin/chars/chunk-15-98f0319b.pack",
+      "git_blob_sha": "9b7ef85fe53f1f969d34c8e93cc262831b2d2ff9"
+    },
+    {
+      "local": "club/assets/penguin/chars/chunk-16-0e82a21d.pack",
+      "source": "client/public/assets/movies/penguin/chars/chunk-16-0e82a21d.pack",
+      "git_blob_sha": "3fcc293921ace197db2925c379eedc36a32a8d28"
+    },
+    {
+      "local": "club/assets/penguin/chars/chunk-17-c8c6748b.pack",
+      "source": "client/public/assets/movies/penguin/chars/chunk-17-c8c6748b.pack",
+      "git_blob_sha": "a43b0e90ec55e1062be177e2e9ab89c6a19cdae9"
+    },
+    {
+      "local": "club/assets/penguin/chars/chunk-18-65248c61.pack",
+      "source": "client/public/assets/movies/penguin/chars/chunk-18-65248c61.pack",
+      "git_blob_sha": "225065d05c504d92b2e177a86d9e1c5817914efb"
+    },
+    {
+      "local": "club/assets/penguin/chars/chunk-19-f3b72a21.pack",
+      "source": "client/public/assets/movies/penguin/chars/chunk-19-f3b72a21.pack",
+      "git_blob_sha": "73b06e48176d695eb0678aebc76d062758664cb3"
+    },
+    {
+      "local": "club/assets/penguin/chars/chunk-2-239b5ba0.pack",
+      "source": "client/public/assets/movies/penguin/chars/chunk-2-239b5ba0.pack",
+      "git_blob_sha": "38b74c2d09ae8bd5083bfedaa37f1de5bb50f664"
+    },
+    {
+      "local": "club/assets/penguin/chars/chunk-3-a8e43ac6.pack",
+      "source": "client/public/assets/movies/penguin/chars/chunk-3-a8e43ac6.pack",
+      "git_blob_sha": "cf8fa5b20ada916d68aefc55fcb2dda4df27f14d"
+    },
+    {
+      "local": "club/assets/penguin/chars/chunk-4-fb537ba0.pack",
+      "source": "client/public/assets/movies/penguin/chars/chunk-4-fb537ba0.pack",
+      "git_blob_sha": "dd7981614e442370e28e4030e88fc4439f2fd499"
+    },
+    {
+      "local": "club/assets/penguin/chars/chunk-5-79688a9b.pack",
+      "source": "client/public/assets/movies/penguin/chars/chunk-5-79688a9b.pack",
+      "git_blob_sha": "cc4e34ac7ee88fd1c387759d99e0be0cb4079d8c"
+    },
+    {
+      "local": "club/assets/penguin/chars/chunk-6-82f13e81.pack",
+      "source": "client/public/assets/movies/penguin/chars/chunk-6-82f13e81.pack",
+      "git_blob_sha": "824bca9b77ebf498371a4df91498d1bb5cda98e7"
+    },
+    {
+      "local": "club/assets/penguin/chars/chunk-7-c4653868.pack",
+      "source": "client/public/assets/movies/penguin/chars/chunk-7-c4653868.pack",
+      "git_blob_sha": "46613e2351559a6324058e3bda9f2cd9d2e9006d"
+    },
+    {
+      "local": "club/assets/penguin/chars/chunk-8-7be970f4.pack",
+      "source": "client/public/assets/movies/penguin/chars/chunk-8-7be970f4.pack",
+      "git_blob_sha": "6f36f62d72e4ca04b6ba80fe3fa2b85611d377b7"
+    },
+    {
+      "local": "club/assets/penguin/chars/chunk-9-b214a27d.pack",
+      "source": "client/public/assets/movies/penguin/chars/chunk-9-b214a27d.pack",
+      "git_blob_sha": "060d609e99994c84dafa01d8726b3a719ed91c6a"
     }
   ]
 }

@@ -49,6 +49,7 @@ class ClubTests(unittest.TestCase):
         self.assertEqual(a['codex-cloud1']['parent'],'codex')
         self.assertEqual(a['codex-cloud1']['color'],a['codex']['color'])
         self.assertEqual(a['codex-cloud1']['state'],'working')
+        self.assertEqual(a['codex-cloud1']['avatar'],'puffle')
         self.assertEqual(s['title'],'Market (codex leader)')
         self.assertNotIn('NEVER SERVE',json.dumps(s))
         (self.net/'codex-cloud1/parent').write_text('claude')
@@ -58,6 +59,7 @@ class ClubTests(unittest.TestCase):
         m['cmd_worker']([str(self.net),'cloud-task-42','--parent','codex','--task','Prove codec'])
         a = {x['name']:x for x in self.state()['agents']}
         self.assertTrue(a['cloud-task-42']['cloud'])
+        self.assertEqual(a['cloud-task-42']['avatar'],'puffle')
         self.assertEqual(a['cloud-task-42']['color'],a['codex']['color'])
         self.assertFalse((self.net/'cloud-task-42').exists())
         m['cmd_worker']([str(self.net),'cloud-task-42','--parent','codex','--state','completed'])
@@ -112,6 +114,14 @@ class ClubTests(unittest.TestCase):
         self.assertEqual(len(m['colors_for'](['custom-'+str(i) for i in range(80)])),80)
         s=m['parse_status']('height 4 term 2 leader codex\nfinished: done\n')
         self.assertEqual(m['market_title'](s),'Done')
+
+    def test_scripted_roster_agent_is_a_colored_penguin(self):
+        d=self.net/'grok';d.mkdir()
+        (d/'genesis.json').write_text('{}');(d/'key.json').write_text('{}')
+        a=next(a for a in self.state()['agents'] if a['name']=='grok')
+        self.assertFalse(a['diplomat'])
+        self.assertEqual(a['avatar'],'penguin')
+        self.assertEqual(a['color'],m['KIND_COLORS']['grok'])
 
     def test_http_routes_do_not_expose_network_files(self):
         class Socket:

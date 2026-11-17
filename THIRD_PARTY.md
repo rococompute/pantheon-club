@@ -8,14 +8,22 @@ The following files are copied unchanged. [provenance.json](club/assets/provenan
 | --- | --- |
 | `club/assets/coffee-atlas.png` | `client/public/assets/rooms-swl/swl-coffee-0.png` |
 | `club/assets/coffee.swl` | `client/public/assets/scenes/coffee.swl` |
-| `club/assets/penguin-atlas.png` | `client/public/assets/penguin-atlas.png` |
-| `club/assets/penguin-body.png` | `client/public/assets/penguin-body.png` |
-| `club/assets/penguin-frames.json` | `client/public/assets/penguin-frames.json` |
 | `club/assets/puffle.pack` | `client/public/assets/puffle-icons/blue/chars/chunk-0-cf65db61.pack` |
 | `club/assets/puffle.json` | `client/public/assets/puffle-icons/blue/timelines.json` |
 | `club/vendor/swl.js` | `client/src/swl/swl.js` |
 | `club/vendor/swlCanvas.js` | `client/src/swl/swlCanvas.js` |
 
-`club/club.js`, `club/club.css`, and `club/index.html` implement the Pantheon-specific view. Its blue HUD styling follows the reference project's classic web HUD, adapted to agent cards, an activity ticker, and a roster. The Coffee Shop is rendered through the reference's SWL Canvas renderer; diplomats use its eight-direction sprite sheets, and cloud puffles are composed from its original SVG character shapes and tinted to their parent's color.
+`club/club.js`, `club/club.css`, and `club/index.html` implement the Pantheon-specific view. Its blue HUD styling follows the reference project's classic web HUD, adapted to agent cards, an activity ticker, and a roster. The Coffee Shop is rendered through the reference's SWL Canvas renderer; all penguins use its native `MovieRoom`/`Clip` timeline renderer and solid body color transforms, with the `ring` and `hotspot` layers hidden, and cloud puffles are composed from its original SVG character shapes and tinted to their parent's color.
 
 Club Penguin, Disney, and Miniclip names and marks are used only to identify this personal fan project's source and inspiration. This repository contains no affiliation or endorsement claim, commercial setup, payment integration, ads, or storefront.
+
+The native renderer also uses these unchanged files from the same pinned commit:
+
+| Local file | Upstream source |
+| --- | --- |
+| `club/vendor/movie/movie.js` | `client/src/movie/movie.js` |
+| `club/vendor/movie/clip.js` | `client/src/movie/clip.js` |
+| `club/vendor/workers/manifest.worker.js` | `client/src/workers/manifest.worker.js` |
+| `club/vendor/workers/tint.worker.js` | `client/src/workers/tint.worker.js` |
+| `club/assets/penguin/timelines.json` | `client/public/assets/movies/penguin/timelines.json` |
+| `club/assets/penguin/chars/*.pack` | `client/public/assets/movies/penguin/chars/*.pack` (all twenty chunks) |

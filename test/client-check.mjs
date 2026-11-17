@@ -1,54 +1,52 @@
-// Exercise initialization, state polling, rendering, and cards without a
-// browser process or network listener. Canvas calls are recorded, not rasterized.
+// Real browser acceptance: native vector rendering, walking, collision limits,
+// customization, persistence, and the independent player/agent state.
 import assert from 'node:assert/strict';
-import {readFile} from 'node:fs/promises';
-import {setTimeout as wait} from 'node:timers/promises';
-const root=new URL('../club/',import.meta.url), elements=new Map(), raf=[], timers=[];
-let drawCalls=0;
-const context=new Proxy({measureText:text=>({width:text.length*7})},{get:(target,key)=>target[key]||(()=>{if(key==='drawImage')drawCalls++;}),set:(target,key,value)=>(target[key]=value,true)});
-class Element {
- constructor(){this.style={};this.children=[];this.hidden=true;this.textContent='';this.attributes={};}
- append(...children){this.children.push(...children);}
- replaceChildren(...children){this.children=children;}
- setAttribute(key,value){this.attributes[key]=value;}
- getContext(){return context;}
- remove(){for(const e of elements.values())e.children=e.children.filter(c=>c!==this);}
- showModal(){this.hidden=false;}
- close(){this.hidden=true;}
-}
-globalThis.document={getElementById:id=>{if(!elements.has(id))elements.set(id,new Element());return elements.get(id);},createElement:()=>new Element(),addEventListener(){}};
-globalThis.matchMedia=()=>({matches:false,addEventListener(){}});
-globalThis.Image=class {constructor(){this.width=1024;this.height=1024;this.naturalWidth=1024;this.complete=true;}set src(value){this._src=value;queueMicrotask(()=>this.onload?.());}};
-globalThis.DOMParser=class {parseFromString(source){return {documentElement:{querySelector:()=>({innerHTML:source.match(/<g[^>]*>([\s\S]*)<\/g>/)[1]})}};}};
-globalThis.requestAnimationFrame=fn=>raf.push(fn);
-globalThis.setTimeout=fn=>timers.push(fn);
-const state={network:'fixture',live:true,title:'Market (codex leader)',term:3,height:25,finished:false,tasks:[],bids:[],agents:[
- {name:'codex',diplomat:true,color:'#10a37f',state:'working',leader:true,pending:[]},
- {name:'claude',diplomat:true,color:'#d97757',state:'needs_input',pending:[]},
- {name:'task-42',diplomat:false,cloud:true,parent:'codex',color:'#10a37f',state:'working',task:'Prove codec',pending:[]}
-]};
-globalThis.fetch=async(path,opts)=>{
- if(path==='/state.json')return Response.json(state);
- if(path.startsWith('/focus'))return new Response('ok');
- return new Response(await readFile(new URL(path.slice(1),root)));
-};
-const data=source=>'data:text/javascript;base64,'+Buffer.from(source).toString('base64');
-const swl=data(await readFile(new URL('vendor/swl.js',root),'utf8'));
-const renderer=data((await readFile(new URL('vendor/swlCanvas.js',root),'utf8')).replace("'./swl.js'",JSON.stringify(swl)));
-const source=(await readFile(new URL('club.js',root),'utf8')).replace("'./vendor/swl.js'",JSON.stringify(swl)).replace("'./vendor/swlCanvas.js'",JSON.stringify(renderer));
-await import(data(source));
-for(let i=0;i<100&&!raf.length;i++)await wait(5);
-assert.ok(raf.length,'Client initialized: '+elements.get('error')?.textContent);
-for(let i=0;i<180;i++){const fn=raf.shift();fn(i*16.67);}
-assert.equal(elements.get('connection').textContent,'● LIVE');
-assert.equal(elements.get('characters').children.length,3);
-assert.ok(drawCalls>100,'Room and sprites draw');
-const worker=elements.get('characters').children[2];worker.onclick();
-assert.equal(elements.get('card-name').textContent,'task-42');
-assert.equal(elements.get('card-task').textContent,'Prove codec');
-assert.equal(elements.get('focus-agent').textContent,'Open parent tab ↗');
-await elements.get('focus-agent').onclick();
-state.agents.pop();await timers.shift()();
-assert.equal(elements.get('characters').children.length,2);
-assert.equal(elements.get('card').hidden,true);
-console.log('Client initialization, 180 render frames, worker card, parent focus, worker removal: OK');
+import {spawn} from 'node:child_process';
+import {fileURLToPath,pathToFileURL} from 'node:url';
+const moduleName=process.env.PLAYWRIGHT_MODULE||'playwright';
+const {chromium}=await import(moduleName.startsWith('/')?pathToFileURL(moduleName).href:moduleName);
+const root=fileURLToPath(new URL('../',import.meta.url));
+const server=spawn(process.env.PYTHON||'python3',[root+'pantheon-club','view','demo'],{cwd:root,stdio:['ignore','pipe','pipe']});
+let browser;
+try {
+ const url=await new Promise((resolve,reject)=>{
+  const timeout=setTimeout(()=>reject(new Error('View server did not start')),15000);
+  server.stdout.on('data',b=>{const m=String(b).match(/http:\/\/127\.0\.0\.1:\d+\//);if(m){clearTimeout(timeout);resolve(m[0]);}});
+  server.once('error',reject);server.once('exit',code=>reject(new Error('View exited '+code)));
+ });
+ browser=await chromium.launch({headless:true,...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE?{executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE}:{})});
+ const page=await browser.newPage({viewport:{width:1000,height:900}}),errors=[];
+ page.on('pageerror',e=>errors.push(e.message));
+ await page.goto(url);
+ await page.waitForFunction(()=>Number(document.querySelector('#scene').dataset.readyPenguins)>=5);
+ assert.match(await page.locator('#counts').textContent(),/4 agent penguins/);
+ const position=()=>page.locator('#scene').evaluate(c=>({x:Number(c.dataset.playerX),y:Number(c.dataset.playerY)}));
+ const clickFloor=async(x,y)=>{const r=await page.locator('#scene').boundingBox();await page.mouse.click(r.x+x*r.width/760,r.y+y*r.height/480);};
+ const before=await position();await clickFloor(620,410);
+ await page.waitForFunction(()=>Number(document.querySelector('#scene').dataset.playerX)>615);
+ assert.ok((await position()).x>before.x+200,'Player walks to the clicked floor');
+ await page.keyboard.down('ArrowLeft');await page.waitForTimeout(250);await page.keyboard.up('ArrowLeft');
+ const moved=await position();assert.ok(moved.x<610,'Arrow keys move the player');
+ await clickFloor(450,260);await page.waitForTimeout(150);
+ assert.ok(Math.abs((await position()).x-moved.x)<3,'Counter clicks do not move the player');
+ await page.getByRole('button',{name:'Customize your penguin'}).click();
+ await page.locator('#player-name').fill('Explorer');
+ await page.locator('#player-color').fill('#e239ab');
+ await page.getByRole('button',{name:'Dance',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('#scene').dataset.playerAction==='dance');
+ await page.waitForTimeout(400);
+ const colored=await page.locator('#scene').evaluate(c=>{
+  const x=Number(c.dataset.playerX),y=Number(c.dataset.playerY);
+  const pixels=c.getContext('2d').getImageData((x-40)*2,(y-70)*2,160,160).data;
+  let match=0;for(let i=0;i<pixels.length;i+=4)if(Math.abs(pixels[i]-226)<4&&Math.abs(pixels[i+1]-57)<4&&Math.abs(pixels[i+2]-171)<4&&pixels[i+3]>200)match++;
+  return match;
+ });
+ assert.ok(colored>40,'Native body transform renders the selected color');
+ await page.reload();await page.waitForFunction(()=>Number(document.querySelector('#scene').dataset.readyPenguins)>=5);
+ await page.getByRole('button',{name:'Customize your penguin'}).click();
+ assert.equal(await page.locator('#player-name').inputValue(),'Explorer');assert.equal(await page.locator('#player-color').inputValue(),'#e239ab');
+ await page.getByRole('button',{name:'Close penguin settings'}).click();
+ await page.screenshot({path:process.env.CLUB_SCREENSHOT||'/private/tmp/pantheon-club-acceptance.png'});
+ assert.deepEqual(errors,[],'No browser runtime errors');
+ console.log('Native penguins, player walking, arrow keys, counter collision, body color, dance, and saved identity: OK');
+} finally {await browser?.close();server.kill('SIGTERM');}

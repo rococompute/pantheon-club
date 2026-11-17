@@ -302,14 +302,15 @@ def build_state(net, live=True):
     recorded = set(m[1].split()) - {"none"} if m else set()
     diplomats = [a for a in agents if os.path.isfile(os.path.join(net, ".cmux", a, "surface")) or a in recorded]
     states = session_states(net, diplomats) if live else {}
-    colors = colors_for(diplomats)
+    parents = {a: None if a in diplomats else parent_of(net, a, diplomats) for a in agents}
+    colors = colors_for([a for a in agents if parents[a] is None])
     out_agents = []
     for a in agents:
         mine = [b for b in st["bids"] if b["by"] == a]
         own = read(os.path.join(net, a, "status.txt"))
         c = st["counts"].get(a, {})
         dip = a in diplomats
-        parent = None if dip else parent_of(net, a, diplomats)
+        parent = parents[a]
         limited = bool(re.search(r"^LIMIT", own, re.M))
         if dip:
             state = "limited" if limited else states.get(a, "none" if live else "idle")
@@ -318,7 +319,8 @@ def build_state(net, live=True):
             state = "limited" if limited else "working" if any(b["state"] == "pending" for b in mine) else "idle"
         out_agents.append({
             "name": a, "kind": kind_of(a), "diplomat": dip, "parent": parent,
-            "color": colors[a] if dip else colors[parent] if parent else PEARL,
+            "avatar": "penguin" if parent is None else "puffle",
+            "color": colors[parent] if parent else colors[a],
             "state": state,
             "leader": st["leader"] == a, "merges": c.get("merges", 0), "led": c.get("led", 0),
             "pending": [{"id": b["id"], "title": b["title"]} for b in mine if b["state"] == "pending"],
@@ -330,7 +332,7 @@ def build_state(net, live=True):
             continue
         out_agents.append({**worker, "diplomat": False, "kind": kind_of(parent),
                            "color": colors[parent], "leader": False, "merges": 0,
-                           "led": 0, "pending": [], "cloud": True})
+                           "led": 0, "pending": [], "cloud": True, "avatar": "puffle"})
     open_tasks = [t for t in st["tasks"] if t["state"] == "open"]
     return {
         "network": os.path.basename(net).lstrip(".") or net,
@@ -363,13 +365,14 @@ class Demo:
         leader = dips[(k // 4) % 4]
         # puffers: two cloud agents of codex's, one of claude's (only some of the
         # time), and the browsing person's node
-        nodes = [("codex-cloud1", "codex"), ("codex-cloud2", "codex"), ("you", None)]
+        nodes = [("codex-cloud1", "codex"), ("codex-cloud2", "codex")]
         if k % 8 < 6:
             nodes.insert(0, ("claude-cloud1", "claude"))
         agents = []
         for i, (a, parent) in enumerate([(d, None) for d in dips] + nodes):
             dip = a in dips
             agents.append({"name": a, "kind": kind_of(a), "diplomat": dip, "parent": parent,
+                           "avatar": "penguin" if dip else "puffle", "cloud": not dip,
                            "color": colors[a] if dip else colors[parent] if parent else PEARL,
                            "state": self.STATES[(k + i * 3) % len(self.STATES)] if dip else
                            ("working" if (k + i) % 2 else "idle"),
@@ -676,9 +679,10 @@ def cmd_attach(args):
         with open(os.path.join(d, "surface"), "w") as f:
             f.write(f"{s}\n")
     cm("rename-tab", "--workspace", w, "--surface", s, "Club View", check=True)
-    cm("reorder-surface", "--workspace", w, "--surface", s, "--index", "0", "--focus", "true", check=True)
+    cm("reorder-surface", "--workspace", w, "--surface", s, "--index", "0", "--focus", "false", check=True)
     for index, tab in [(1, plan), (2, watchdog)]:
-        cm("reorder-surface", "--workspace", w, "--surface", tab["id"], "--index", str(index), check=True)
+        cm("reorder-surface", "--workspace", w, "--surface", tab["id"], "--index", str(index), "--focus", "false", check=True)
+    cm("reorder-surface", "--workspace", w, "--surface", s, "--index", "0", "--focus", "true", check=True)
     install_worker_helpers(net)
     say(f"the club is the first tab of {net}'s left half, before the plan and the watchdog ({url})")
 

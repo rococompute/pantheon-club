@@ -34,9 +34,11 @@ The server binds only to `127.0.0.1`, chooses an available port, and stops after
 
 ## What you see
 
-- **Penguins:** participating diplomats, each with a distinct color. Their states come from cmux session hooks. Working agents gather on the floor; agents waiting for you wave by the door; agents at a usage limit sit near the sofas. Missing session hooks are shown as unknown rather than assumed to be working.
+- **Penguins:** every primary network agent, including scripted participants, each with a distinct color. Diplomats get their states from cmux session hooks; scripted agents use their node status. Working agents gather on the floor; agents waiting for you wave by the door; agents at a usage limit sit near the sofas. Missing session hooks are shown as unknown rather than assumed to be working.
 - **Leader:** the current term's leader has a gold star.
-- **Puffles:** spawned provider cloud workers follow their parent and use exactly its color. Network nodes without diplomats are also puffles. An explicit `NET/NODE/parent` file overrides node-name/provider matching; an independent node is pearl.
+- **Puffles:** spawned provider cloud workers follow their parent and use exactly its color. Child network nodes with a diplomat parent are also puffles. An explicit `NET/NODE/parent` file overrides node-name/provider matching. Primary roster nodes remain penguins even when their bidders are scripted.
+- **You:** your own local penguin. Click the floor or use arrow keys/WASD to move; the You button changes its name, color, or emote (wave, dance, sit, stand). Appearance is saved in this browser. Furniture bounds prevent walking into the counter and sofas.
+- **Color:** uses the reference's native `MovieRoom`/`Clip` body color transform, with selection-ring and hotspot layers hidden. Faces, outlines, and feet retain their original art.
 - **Work:** the blue activity bar reports the latest bid. Clicking a penguin or puffle opens its state and task card; its button opens the relevant cmux tab. Cloud tasks open their parent's tab.
 - **Accessibility:** characters are keyboard-accessible buttons, the Agents button provides a textual roster, and animation can be paused. The view honors reduced-motion preferences.
 
@@ -75,7 +77,7 @@ To try the real calculator example from a normal terminal with cmux running:
 This initializes a separate four-node network in `.dogfood/calculator/`, checks the
 calculator baseline, then starts the market with the subtraction and multiplication
 goals and attaches Club View. The default uses scripted bidders and no model calls;
-these nodes appear as independent puffles. To exercise diplomat penguins with your
+these nodes appear as agent penguins. To exercise interactive diplomats with your
 installed provider CLIs, set `CLUB_DIPLOMATS="claude codex"` before the command.
 The provider CLIs use Pantheon's existing unattended-session settings.
 
@@ -85,9 +87,11 @@ selects a separate run directory. Runs and generated keys stay in the ignored
 `.dogfood/` directory, outside the committed source. The market uses ports 43600–43603;
 set `CLUB_BASE_PORT` before preparing a new network if those are occupied.
 
-The initial attempted run in this coding environment passed baseline and genesis
-checks but could not start: the sandbox denied the cmux Unix socket and localhost
-listeners. This is not a completed live cmux or browser validation.
+The live calculator workspace has been launched successfully in cmux. Its four network
+nodes, Club → plan.md → watchdog order, live state endpoint, and native room rendering
+have been inspected. Claude and Codex run as diplomats; Grok and Muse currently use
+scripted bidders. The calculator market has pending bids; a completed calculator goal
+has not been verified.
 
 ```sh
 ./pantheon-club view demo --port 8767        # http://127.0.0.1:8767
@@ -95,9 +99,16 @@ listeners. This is not a completed live cmux or browser validation.
 ./pantheon-club state NET                  # inspect the JSON state
 python3 -m unittest discover -s test -v
 node test/room-check.mjs
-node test/client-check.mjs
+node test/client-check.mjs                  # requires Playwright + Chromium
 python3 tools/export-preview.py /tmp/pantheon-club-preview.html
 ```
+
+The view itself has no npm dependency. The optional browser acceptance test uses
+Playwright: install it with `npm install --no-save --package-lock=false playwright`,
+then `npx playwright install chromium`. `PLAYWRIGHT_MODULE` and
+`PLAYWRIGHT_CHROMIUM_EXECUTABLE` can point to existing local installations. It starts
+and stops its own demo server and checks real rendered body colors, floor/keyboard
+movement, collision limits, dance, and appearance persistence.
 
 The last command exports a self-contained, clearly labeled demo file with embedded assets for offline visual review. It is a fixture, not a live market connection.
 

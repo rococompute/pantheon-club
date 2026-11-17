@@ -9,7 +9,7 @@
 <body>
 <main>
   <header><span class="wordmark">PANTHEON <small>CLUB VIEW</small></span><span id="connection" role="status">Connecting…</span></header>
-  <section id="room" aria-label="Coffee Shop agent room">
+  <section id="room" aria-label="Coffee Shop agent room. Click the floor or use arrow keys to move your penguin." tabindex="0">
     <canvas id="scene" width="1520" height="960" aria-label="Live diplomats as penguins and cloud workers as matching puffles"></canvas>
     <div class="room-title"><b>Coffee Shop</b><span id="market">Opening the club…</span></div>
     <div id="characters" aria-label="Agents in this room"></div>
@@ -22,14 +22,23 @@
   </section>
   <nav class="toolbar" aria-label="Club controls">
     <button id="roster-toggle" title="Show the room's agents" aria-expanded="false">☷ <span>Agents</span></button>
+    <button id="player-settings" title="Customize your penguin" aria-label="Customize your penguin">You</button>
     <div class="ticker" id="ticker" aria-live="polite">Waiting for the market…</div>
     <button id="motion" aria-pressed="false" title="Pause animation">Ⅱ</button>
     <button id="help" title="About Club View" aria-label="About Club View">?</button>
   </nav>
   <section id="roster" hidden aria-label="Agent roster"></section>
   <footer><span id="counts">One market · one room</span><span id="chain"></span></footer>
+  <p id="walk-hint">Click the floor to walk · arrow keys or WASD to move · You to customize</p>
+  <dialog id="player-dialog"><button id="close-player" aria-label="Close penguin settings">×</button><h2>Your penguin</h2>
+    <label>Name <input id="player-name" maxlength="20" value="You"></label>
+    <label>Color <input id="player-color" type="color" value="#ffbf35"></label>
+    <div class="emotes"><button data-emote="wave">Wave</button><button data-emote="dance">Dance</button><button data-emote="sit">Sit</button><button data-emote="stand">Stand</button></div>
+    <p>Your penguin is local to this view. Walking and changing its appearance do not send commands to agents.</p>
+  </dialog>
   <dialog id="about"><button id="close-about" aria-label="Close about">×</button><h2>Welcome to the club.</h2>
-    <p>Penguins are participating diplomats. Puffles are cloud workers and nodes, in their parent's color. Click a character to see its work and open its tab.</p>
+    <p>Penguins are network agents, including scripted participants. Puffles are spawned workers, in their parent's color. Click a character to see its work and open its tab.</p>
+    <p>Your own penguin can walk around the room: click the floor or use arrow keys or WASD. Use You to change its name, body color, or emote.</p>
     <p>Working agents gather on the floor, agents waiting on you wave by the door, and agents at a usage limit rest by the sofas. The current leader wears a star.</p>
     <p>A personal, non-commercial fan extension of Pantheon. Room art, penguin sprites, puffle shapes, and the SWL renderer are from <a href="https://github.com/gabixou/claude-penguin" target="_blank" rel="noreferrer">Claude Penguin by Arenovisk</a>. Club Penguin assets belong to their respective owners.</p>
   </dialog>
