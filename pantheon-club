@@ -18,12 +18,13 @@ Run scripts/setup-game once first (Node 24+, Python 3.10+, Git, npm).
   pantheon-club down NET
                         stop the club's server, then pantheon-cmux down NET
   pantheon-club serve NET [--port N]
-                        legacy standalone Coffee Shop server; stops once NET's
-                        workspace is gone
+                        alias for game, using the full local game
   pantheon-club state NET|RECORD
                         the state the view draws, as JSON
   pantheon-club view RECORD|demo [--port N]
-                        legacy standalone Coffee Shop prototype; no cmux
+                        alias for game; no cmux needed for demo or records
+  pantheon-club legacy-view RECORD|demo [--port N]
+                        preserved Coffee Shop prototype for comparison only
   pantheon-club worker NET NAME --parent DIPLOMAT [--state STATE] [--task TEXT]
                         register or update a spawned provider cloud task as a
                         puffle; --remove dismisses it. attach also installs a
@@ -392,7 +393,7 @@ class Demo:
 
 # --- the server ----------------------------------------------------------
 
-def make_handler(source, net=None):
+def make_handler(source, net=None, legacy=False):
     cache = {"at": 0.0, "body": b"{}"}
     lock = threading.Lock()
 
@@ -410,7 +411,7 @@ def make_handler(source, net=None):
 
         def do_GET(self):
             path = self.path.split("?")[0]
-            if path in ("/", "/index.html"):
+            if legacy and path in ("/", "/index.html"):
                 self.send(200, read(PAGE).encode(), "text/html; charset=utf-8")
             elif path == "/state.json":
                 with lock:
@@ -422,7 +423,7 @@ def make_handler(source, net=None):
                         cache["at"] = time.time()
                     body = cache["body"]
                 self.send(200, body, "application/json")
-            elif path.startswith(("/assets/", "/vendor/")) or path in ("/club.js", "/club.css"):
+            elif legacy and (path.startswith(("/assets/", "/vendor/")) or path in ("/club.js", "/club.css")):
                 root = Path(HERE, "club").resolve()
                 target = (root / path.lstrip("/")).resolve()
                 if root not in target.parents or not target.is_file():
@@ -455,18 +456,10 @@ def free_port():
         return s.getsockname()[1]
 
 
-def serve(source, port, net=None, on_ready=None, alive=None):
-    httpd = ThreadingHTTPServer(("127.0.0.1", port), make_handler(source, net))
+def serve(source, port, net=None, on_ready=None, legacy=False):
+    httpd = ThreadingHTTPServer(("127.0.0.1", port), make_handler(source, net, legacy=legacy))
     if on_ready:
         on_ready(httpd.server_address[1])
-    if alive:
-        def watch():
-            while True:
-                time.sleep(15)
-                if not alive():
-                    httpd.shutdown()
-                    return
-        threading.Thread(target=watch, daemon=True).start()
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
@@ -583,56 +576,11 @@ def workspace_alive(net):
     return out is None or w in out  # cmux not answering: keep serving
 
 
-def server_up(net):
-    d = os.path.join(net, ".cmux", "club")
-    pid, port = read(os.path.join(d, "pid")).strip(), read(os.path.join(d, "port")).strip()
-    if not (pid.isdigit() and port.isdigit()):
-        return None
-    try:
-        os.kill(int(pid), 0)
-    except OSError:
-        return None
-    try:
-        with socket.create_connection(("127.0.0.1", int(port)), timeout=1):
-            return int(port)
-    except OSError:
-        return None
-
-
-def cmd_serve(args):
-    net = net_arg(args, "serve")
-    d = club_dir(net)
-
-    def ready(port):
-        with open(os.path.join(d, "port"), "w") as f:
-            f.write(f"{port}\n")
-        with open(os.path.join(d, "pid"), "w") as f:
-            f.write(f"{os.getpid()}\n")
-        say(f"serving {net}'s club at http://127.0.0.1:{port}/ (it stops once the workspace is gone)")
-
-    serve(lambda: build_state(net), port_arg(args), net=net, on_ready=ready,
-          alive=lambda: os.path.isfile(os.path.join(net, ".cmux", "workspace")) and workspace_alive(net))
-
-
-def start_server(net):
-    port = server_up(net)
-    if port:
-        return port
-    d = club_dir(net)
-    for f in ("port", "pid"):
-        try:
-            os.remove(os.path.join(d, f))
-        except OSError:
-            pass
-    log = open(os.path.join(d, "server.log"), "a")
-    subprocess.Popen([sys.executable, os.path.realpath(__file__), "serve", net], stdout=log, stderr=log,
-                     stdin=subprocess.DEVNULL, start_new_session=True)
-    for _ in range(50):
-        port = server_up(net)
-        if port:
-            return port
-        time.sleep(0.1)
-    die(f"the club's server didn't start: read {os.path.join(d, 'server.log')}")
+def require_game():
+    if not os.path.isdir(os.path.join(HERE, ".upstream", "claude-penguin", "client", "node_modules")):
+        die("run scripts/setup-game first to install the local upstream game")
+    if not shutil.which("node"):
+        die("the local game needs Node 24+ on PATH")
 
 
 def start_game(net):
@@ -646,8 +594,7 @@ def start_game(net):
             return info["url"]
     except (OSError, ValueError, KeyError, TypeError):
         pass
-    if not os.path.isdir(os.path.join(HERE, ".upstream", "claude-penguin", "client", "node_modules")):
-        die("run scripts/setup-game first to install the local upstream game")
+    require_game()
     with open(os.path.join(d, "game.log"), "a") as log:
         process = subprocess.Popen(["node", os.path.join(HERE, "game", "run.mjs"), net,
                                     "--port", str(free_port()), "--metadata", metadata],
@@ -719,6 +666,7 @@ def cmd_attach(args):
 
 def cmd_up(args):
     net = net_arg(args, "up")
+    require_game()
     pc = pantheon_cmux()
     if "--layout" in args and args[args.index("--layout") + 1:][:1] == ["grid"]:
         die("Club View needs Pantheon's plan layout; omit --layout grid")
@@ -757,16 +705,16 @@ def cmd_state(args):
     print(json.dumps(build_state(net, live=live), indent=1))
 
 
-def cmd_view(args):
+def cmd_legacy_view(args):
     if not args:
-        die("view what? pantheon-club view RECORD (a run's record, ~/.pantheon/runs/NAME) or pantheon-club view demo")
+        die("legacy-view needs a run record or demo")
     if args[0] == "demo":
         source = Demo().state
     else:
         net = net_arg(args, "view")
         build_state(net, live=False)  # says what's wrong, before serving
         source = lambda: build_state(net, live=False)  # noqa: E731
-    serve(source, port_arg(args), on_ready=lambda p: say(f"open http://127.0.0.1:{p}/ (ctrl-c stops it)"))
+    serve(source, port_arg(args), legacy=True, on_ready=lambda p: say(f"open http://127.0.0.1:{p}/ (ctrl-c stops it)"))
 
 
 def cmd_api(args):
@@ -781,6 +729,7 @@ def cmd_api(args):
 
 
 def cmd_game(args):
+    require_game()
     args = list(args) or ["demo"]
     if args[0] != "demo":
         args[0] = net_arg(args, "game")
@@ -788,8 +737,8 @@ def cmd_game(args):
 
 
 def main(argv):
-    cmds = {"up": cmd_up, "attach": cmd_attach, "down": cmd_down, "serve": cmd_serve, "state": cmd_state, "worker": cmd_worker,
-            "view": cmd_view, "game": cmd_game, "api": cmd_api}
+    cmds = {"up": cmd_up, "attach": cmd_attach, "down": cmd_down, "serve": cmd_game, "state": cmd_state, "worker": cmd_worker,
+            "view": cmd_game, "game": cmd_game, "api": cmd_api, "legacy-view": cmd_legacy_view}
     if not argv or argv[0] in ("help", "-h", "--help"):
         print(__doc__.strip())
         return

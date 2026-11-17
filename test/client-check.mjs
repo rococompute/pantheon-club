@@ -6,7 +6,7 @@ import {fileURLToPath,pathToFileURL} from 'node:url';
 const moduleName=process.env.PLAYWRIGHT_MODULE||'playwright';
 const {chromium}=await import(moduleName.startsWith('/')?pathToFileURL(moduleName).href:moduleName);
 const root=fileURLToPath(new URL('../',import.meta.url));
-const server=spawn(process.env.PYTHON||'python3',[root+'pantheon-club','view','demo'],{cwd:root,stdio:['ignore','pipe','pipe']});
+const server=spawn(process.env.PYTHON||'python3',[root+'pantheon-club','legacy-view','demo'],{cwd:root,stdio:['ignore','pipe','pipe']});
 let browser;
 try {
  const url=await new Promise((resolve,reject)=>{

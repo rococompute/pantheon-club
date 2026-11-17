@@ -18,6 +18,8 @@ Requires Node **24+** (including built-in SQLite), Python 3.10+, Git and npm. Th
 # Ctrl-C stops the client server, game server and state bridge.
 ```
 
+The original `pantheon-club view RECORD|demo` and `pantheon-club serve NET` entry points also launch this full local game. Existing cmux tabs are reused by `attach` and navigated to the game, retaining the Club View → plan.md → watchdog order.
+
 Everything is hosted on **127.0.0.1**: the Vite client, WebSocket game server and Pantheon state bridge. This does not connect to the project’s public game server, use public hosting, or expose a LAN listener. The WebSocket server rejects foreign browser origins. Your player and igloo persist in `.local-game/penguin.db`; no external account is required. Game assets are served locally after setup. Installation requires Internet access.
 
 The browser polls sanitized Pantheon status every two seconds. An unavailable market does not stop the game. The bridge does not serve node keys or source checkouts. The game server has no access to Pantheon’s agent controls; focusing a tab goes through the separate local bridge.
@@ -76,7 +78,7 @@ node test/game-check.mjs
 
 The browser check exercises native sprite loading, multiple same-color puffles, player movement through floor clicks, map travel, clearing and restoring actors, and exclusion from another player’s igloo. It checks browser exceptions and game network destinations. `CHROME` overrides the Chrome binary; `CLUB_SCREENSHOT` selects the screenshot path.
 
-The earlier standalone Coffee Shop prototype remains under `club/` and `pantheon-club view demo`; it is not the default attached game. Its export tool and `room-check.mjs`/`client-check.mjs` checks apply only to that prototype. The calculator helper in `scripts/dogfood-calculator` still prepares and launches a separate sample Pantheon market; attaching now uses the full game.
+The earlier standalone Coffee Shop prototype remains under `club/` and is available only through the explicit `pantheon-club legacy-view demo` command for comparison. Its export tool and `room-check.mjs`/`client-check.mjs` checks apply only to that prototype. The calculator helper in `scripts/dogfood-calculator` still prepares and launches a separate sample Pantheon market; attaching now uses the full game. Game installation is checked before `up` starts a market. The normal Python state API serves only status and tab-focus requests, not the prototype.
 
 ## Fan-use scope and credits
 

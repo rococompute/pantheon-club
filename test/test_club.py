@@ -112,6 +112,17 @@ class ClubTests(unittest.TestCase):
         self.assertEqual(sum(a['diplomat'] for a in s['agents']),2)
         self.assertFalse(s['live'])
 
+    def test_original_entry_points_launch_the_native_game(self):
+        class Launched(Exception):
+            pass
+        for command in ['view', 'serve', 'game']:
+            with self.subTest(command=command), patch.dict(g, require_game=lambda: None):
+                with patch.object(g['os'], 'execvp', side_effect=Launched) as launch:
+                    with self.assertRaises(Launched):
+                        m['main']([command, str(self.net), '--port', '8768'])
+                    launch.assert_called_once_with('node', ['node', str(ROOT/'game/run.mjs'),
+                                                           str(self.net), '--port', '8768'])
+
     def test_many_diplomats_and_finished_status(self):
         self.assertEqual(len(m['colors_for'](['custom-'+str(i) for i in range(80)])),80)
         s=m['parse_status']('height 4 term 2 leader codex\nfinished: done\n')
@@ -132,13 +143,15 @@ class ClubTests(unittest.TestCase):
                 self.output = bytearray()
             def makefile(self, *_): return self.input
             def sendall(self, data): self.output.extend(data)
-        def request(path, method='GET', headers=''):
+        def request(path, method='GET', headers='', legacy=False):
             sock = Socket(f'{method} {path} HTTP/1.0\r\n{headers}\r\n'.encode())
-            m['make_handler'](self.state, str(self.net))(sock, ('127.0.0.1', 1234),
+            m['make_handler'](self.state, str(self.net), legacy=legacy)(sock, ('127.0.0.1', 1234),
                 SimpleNamespace(server_address=('127.0.0.1',8767)))
             return bytes(sock.output)
-        self.assertIn(b'200 OK',request('/assets/coffee.swl'))
-        self.assertIn(b'text/javascript',request('/club.js'))
+        self.assertIn(b'200 OK',request('/assets/coffee.swl',legacy=True))
+        self.assertIn(b'text/javascript',request('/club.js',legacy=True))
+        for path in ['/', '/club.js', '/assets/coffee.swl']:
+            self.assertIn(b'404 Not Found', request(path))
         for path in ['/claude/key.json','/assets/../../pantheon-club','/assets/../../claude/key.json']:
             self.assertIn(b'404 Not Found',request(path))
         self.assertNotIn(b'NEVER SERVE',request('/state.json'))

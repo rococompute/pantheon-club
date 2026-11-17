@@ -4,7 +4,7 @@ The visual source is [Claude Penguin by Arenovisk (gabixou)](https://github.com/
 
 The default Club View now runs the full upstream Phaser/Vite client and Node/SQLite server. `scripts/setup-game` fetches the pinned checkout and installs its lockfile dependencies into ignored `.upstream/claude-penguin/`; those files are not republished by this repository. Upstream sources stay unchanged on disk. The local adapter installs native penguin and puffle entities inside the player's igloo and constrains the game server to loopback. No public game server or public hosting is used.
 
-The copied files described below belong to the preserved standalone Coffee Shop prototype (`pantheon-club view`), not the new default game.
+The copied files described below belong to the preserved standalone Coffee Shop prototype (`pantheon-club legacy-view`), not the new default game.
 
 The following files are copied unchanged. [provenance.json](club/assets/provenance.json) records the exact upstream paths and Git blob hashes so the copies can be audited.
 

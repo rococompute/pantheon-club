@@ -35,12 +35,14 @@ async function close(code = 0) {
   if (closing) return;
   closing = true;
   for (const child of children) child.kill('SIGTERM');
-  await vite?.close();
+  // Remove the process record before closing the last event-loop handles.
+  // Vite may finish closing after Node has no remaining referenced handles.
   if (metadata) {
     try {
       if (JSON.parse(await readFile(metadata, 'utf8')).pid === process.pid) await unlink(metadata);
     } catch {}
   }
+  await vite?.close();
   process.exit(code);
 }
 for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => close());
