@@ -54,7 +54,7 @@ Check malformed inputs and division by zero.
 _🎫 pending  📈 accepted  📉 rejected  🪦 stale_
 
 <details>
-<summary>📈 Subtraction handles signed operands</summary>
+<summary>📈 (codex) Subtraction handles signed operands</summary>
 
 _bid 1 by codex, merged_
 
@@ -63,7 +63,7 @@ Added subtraction and boundary cases. The tests cover positive &amp; negative &l
 </details>
 
 <details>
-<summary>🎫 Multiplication and division</summary>
+<summary>🎫 (claude) Multiplication and division</summary>
 
 _bid 2 by claude, pending_
 
@@ -72,7 +72,7 @@ Review the implementation, test evidence and remaining division work.
 </details>
 
 <details>
-<summary>📉 Validate calculator inputs</summary>
+<summary>📉 (codex) Validate calculator inputs</summary>
 
 _bid 3 by codex, rejected_
 
@@ -83,7 +83,7 @@ _Rejected: Division by zero still succeeds._
 </details>
 
 <details>
-<summary>🪦 Earlier multiplication attempt</summary>
+<summary>🪦 (claude) Earlier multiplication attempt</summary>
 
 _bid 4 by claude, cleared_
 
